@@ -10,7 +10,8 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
-from .data import load_episode
+from .data import load_episode, select_evaluation_sample
+from .evaluation import BatchEvaluator, build_manifest
 from .providers import (
     OpenAICompatibleAgent,
     ScriptedSmokeAgent,
@@ -22,6 +23,12 @@ from .workspace import RepositoryWorkspace
 
 
 DEFAULT_INSTANCE = "pallets__flask-5014"
+DEFAULT_EVALUATION_PREFERENCES = (
+    "concise_question",
+    "detail_question",
+    "no_ask",
+    "one_question",
+)
 
 
 def load_local_environment(path: Path = Path("simplified/.env")) -> None:
@@ -140,6 +147,61 @@ def command_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_evaluate(args: argparse.Namespace) -> int:
+    preferences = tuple(
+        item.strip() for item in args.preferences.split(",") if item.strip()
+    )
+    episodes = select_evaluation_sample(
+        args.data,
+        sample_size=args.sample_size,
+        preferences=preferences,
+        seed=args.seed,
+        anchor_instance=args.anchor_instance or None,
+        anchor_preference=args.anchor_preference or None,
+    )
+    if args.mode == "offline":
+        model_name = ScriptedSmokeAgent.name
+        simulator_name = DeterministicUserSimulator.name
+        provider_factory = lambda episode: ScriptedSmokeAgent(
+            episode.expected_functions
+        )
+        simulator_factory = lambda episode: DeterministicUserSimulator()
+    else:
+        model_name = args.qwen_model
+        simulator_name = args.gemini_model
+        provider_factory = lambda episode: OpenAICompatibleAgent(
+            model=args.qwen_model,
+            base_url=args.qwen_base_url,
+        )
+        simulator_factory = lambda episode: GeminiUserSimulator(
+            model=args.gemini_model
+        )
+
+    manifest = build_manifest(
+        episodes=episodes,
+        mode=args.mode,
+        model=model_name,
+        simulator=simulator_name,
+        max_turns=args.max_turns,
+        seed=args.seed,
+    )
+    if args.dry_run:
+        print(json.dumps(manifest, indent=2))
+        return 0
+
+    summary = BatchEvaluator(
+        workspace_root=args.workspace_root,
+        output_dir=args.output_dir,
+        provider_factory=provider_factory,
+        simulator_factory=simulator_factory,
+        max_turns=args.max_turns,
+        resume=args.resume,
+    ).run(episodes, manifest)
+    print(json.dumps(summary, indent=2))
+    print(f"summary: {args.output_dir / 'summary.md'}")
+    return 0 if summary["episodes_failed"] == 0 else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -183,6 +245,54 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.getenv("QWEN_BASE_URL", "http://localhost:8000/v1"),
     )
     run.add_argument(
+        "--gemini-model",
+        default="gemini-3.5-flash-lite",
+    )
+
+    evaluate = subparsers.add_parser("evaluate")
+    evaluate.add_argument(
+        "--data",
+        type=Path,
+        default=Path("data/test_id.parquet"),
+    )
+    evaluate.add_argument(
+        "--workspace-root",
+        type=Path,
+        default=Path("simplified/workspaces"),
+    )
+    evaluate.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("simplified/results/baseline"),
+    )
+    evaluate.add_argument("--mode", choices=("offline", "live"), default="offline")
+    evaluate.add_argument("--sample-size", type=int, default=4)
+    evaluate.add_argument("--seed", type=int, default=7)
+    evaluate.add_argument(
+        "--preferences",
+        default=",".join(DEFAULT_EVALUATION_PREFERENCES),
+        help="Comma-separated preference conditions used round-robin.",
+    )
+    evaluate.add_argument("--anchor-instance", default=DEFAULT_INSTANCE)
+    evaluate.add_argument("--anchor-preference", default="concise_question")
+    evaluate.add_argument("--max-turns", type=int, default=8)
+    evaluate.add_argument("--dry-run", action="store_true")
+    evaluate.add_argument(
+        "--no-resume",
+        action="store_false",
+        dest="resume",
+        help="Rerun completed episode files in the output directory.",
+    )
+    evaluate.set_defaults(resume=True, handler=command_evaluate)
+    evaluate.add_argument(
+        "--qwen-model",
+        default=os.getenv("QWEN_MODEL", "Qwen/Qwen3.5-4B"),
+    )
+    evaluate.add_argument(
+        "--qwen-base-url",
+        default=os.getenv("QWEN_BASE_URL", "http://localhost:8000/v1"),
+    )
+    evaluate.add_argument(
         "--gemini-model",
         default="gemini-3.5-flash-lite",
     )

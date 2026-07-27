@@ -3,7 +3,7 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from ppp_simplified.data import load_episode
+from ppp_simplified.data import load_episode, select_evaluation_sample
 
 
 def write_episode(path: Path) -> None:
@@ -50,3 +50,53 @@ def test_load_realistic_episode(tmp_path: Path) -> None:
     assert episode.visible_issue == "Something breaks."
     assert episode.expected_functions == ("a.py:Widget.run",)
     assert episode.edited_files == ("a.py",)
+
+
+def test_select_evaluation_sample_balances_preferences_and_repositories(
+    tmp_path: Path,
+) -> None:
+    preferences = (
+        "concise_question",
+        "detail_question",
+        "no_ask",
+        "one_question",
+    )
+    rows = []
+    for index, preference in enumerate(preferences):
+        instance = "anchor" if index == 0 else f"task-{index}"
+        ability = (
+            f'FuncLocEnv@{{"instance_id":"{instance}",'
+            f'"repo":"org/repo-{index}","base_commit":"abc{index}",'
+            f'"problem_statement":"Issue {index}","patch":"",'
+            f'"edited_functions":["pkg/mod.py:run_{index}"]}}'
+        )
+        rows.append(
+            {
+                "ability": ability,
+                "extra_info": {
+                    "is_vague": True,
+                    "preference": {
+                        "preference_name": preference,
+                        preference: {
+                            "preference": f"Follow {preference}.",
+                            "reward": "Comply.",
+                        },
+                    },
+                },
+            }
+        )
+    path = tmp_path / "sample.parquet"
+    pq.write_table(pa.Table.from_pylist(rows), path)
+
+    episodes = select_evaluation_sample(
+        path,
+        sample_size=4,
+        preferences=preferences,
+        seed=7,
+        anchor_instance="anchor",
+        anchor_preference="concise_question",
+    )
+
+    assert [item.preference.name for item in episodes] == list(preferences)
+    assert len({item.repository for item in episodes}) == 4
+    assert episodes[0].instance_id == "anchor"

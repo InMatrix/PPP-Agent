@@ -98,6 +98,46 @@ simplified/.venv/bin/ppp-simple run --mode live --max-turns 12
 
 Results are written below `simplified/results/`, which is ignored by Git.
 
+## Evaluate a small live baseline
+
+Preview the deterministic, stratified sample before making any model calls:
+
+```bash
+simplified/.venv/bin/ppp-simple evaluate \
+  --mode live \
+  --sample-size 4 \
+  --max-turns 8 \
+  --dry-run
+```
+
+The default sample uses distinct tasks and repositories across
+`concise_question`, `detail_question`, `no_ask`, and `one_question`. It keeps
+the known Flask task as the first sanity check. Run the batch with:
+
+```bash
+simplified/.venv/bin/ppp-simple evaluate \
+  --mode live \
+  --sample-size 4 \
+  --max-turns 8 \
+  --output-dir simplified/results/baseline-live-4
+```
+
+Each episode is saved immediately. Repeating the command resumes completed
+episodes, so an interrupted repository download or provider error does not
+discard earlier results. Use `--no-resume` to rerun every selected episode.
+
+The output directory contains:
+
+- `manifest.json`: model, sampling, and episode configuration.
+- `episodes/*.json`: complete trajectory and reward, or an isolated error.
+- `summary.json`: aggregate metrics for analysis.
+- `summary.md`: a compact, human-readable baseline report.
+
+The primary metrics are exact localization rate, mean function F1, agent finish
+rate, empty prediction rate, question rate, disclosure level, preference
+compliance, turns, latency, and total reward. Increase the sample only after
+inspecting the four-episode report.
+
 ## Expected cost
 
 The repository and offline run have no API cost. A live episode invokes Gemini
