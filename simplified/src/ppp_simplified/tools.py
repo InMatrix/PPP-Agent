@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -12,6 +14,138 @@ from .models import AgentAction, UserReply
 
 class ToolError(ValueError):
     pass
+
+
+IGNORED_DIRECTORY_NAMES = {
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".tox",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+}
+
+
+@dataclass(frozen=True)
+class SymbolLocation:
+    path: str
+    line: int
+    qualified_name: str
+    kind: str
+
+
+@dataclass(frozen=True)
+class FunctionValidationError:
+    value: str
+    message: str
+
+
+class PythonSymbolIndex:
+    """Lazily index Python definitions with qualified names."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root.resolve()
+        self._locations: tuple[SymbolLocation, ...] | None = None
+
+    @staticmethod
+    def _ignored(path: Path) -> bool:
+        return any(
+            part.startswith(".") or part in IGNORED_DIRECTORY_NAMES
+            for part in path.parts
+        )
+
+    def _build(self) -> tuple[SymbolLocation, ...]:
+        locations: list[SymbolLocation] = []
+        for path in sorted(self.root.rglob("*.py")):
+            relative = path.relative_to(self.root)
+            if self._ignored(relative) or path.stat().st_size > 2_000_000:
+                continue
+            try:
+                tree = ast.parse(path.read_text(errors="replace"))
+            except (OSError, SyntaxError, UnicodeError):
+                continue
+
+            class DefinitionVisitor(ast.NodeVisitor):
+                def __init__(self) -> None:
+                    self.parents: list[str] = []
+
+                def _record(self, node: ast.AST, name: str, kind: str) -> None:
+                    qualified = ".".join((*self.parents, name))
+                    locations.append(
+                        SymbolLocation(
+                            path=relative.as_posix(),
+                            line=int(getattr(node, "lineno", 1)),
+                            qualified_name=qualified,
+                            kind=kind,
+                        )
+                    )
+
+                def visit_ClassDef(self, node: ast.ClassDef) -> None:
+                    self._record(node, node.name, "class")
+                    self.parents.append(node.name)
+                    self.generic_visit(node)
+                    self.parents.pop()
+
+                def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+                    self._record(node, node.name, "function")
+                    self.parents.append(node.name)
+                    self.generic_visit(node)
+                    self.parents.pop()
+
+                def visit_AsyncFunctionDef(
+                    self,
+                    node: ast.AsyncFunctionDef,
+                ) -> None:
+                    self._record(node, node.name, "function")
+                    self.parents.append(node.name)
+                    self.generic_visit(node)
+                    self.parents.pop()
+
+            DefinitionVisitor().visit(tree)
+        return tuple(locations)
+
+    @property
+    def locations(self) -> tuple[SymbolLocation, ...]:
+        if self._locations is None:
+            self._locations = self._build()
+        return self._locations
+
+    def find(
+        self,
+        *,
+        name: str,
+        path_prefix: str = "",
+        kind: str = "any",
+        max_results: int = 50,
+    ) -> tuple[SymbolLocation, ...]:
+        matches = [
+            location
+            for location in self.locations
+            if (
+                location.qualified_name == name
+                or location.qualified_name.rsplit(".", 1)[-1] == name
+            )
+            and (kind == "any" or location.kind == kind)
+            and (
+                not path_prefix
+                or location.path == path_prefix
+                or location.path.startswith(path_prefix.rstrip("/") + "/")
+            )
+        ]
+        return tuple(matches[: max(1, min(max_results, 100))])
+
+    def contains(self, path: str, qualified_name: str) -> bool:
+        return any(
+            location.path == path
+            and location.qualified_name == qualified_name
+            for location in self.locations
+        )
 
 
 class ReadOnlyRepositoryTools:
@@ -24,6 +158,7 @@ class ReadOnlyRepositoryTools:
         self.ask_user = ask_user
         self.user_replies: list[UserReply] = []
         self.final_answer: tuple[str, ...] | None = None
+        self.symbols = PythonSymbolIndex(self.root)
 
     def execute(self, action: AgentAction) -> str:
         arguments = action.arguments
@@ -31,6 +166,19 @@ class ReadOnlyRepositoryTools:
             return self.list_files(
                 str(arguments.get("path", "")),
                 int(arguments.get("max_entries", 120)),
+            )
+        if action.tool == "list_tree":
+            return self.list_tree(
+                str(arguments.get("path", "")),
+                int(arguments.get("max_depth", 2)),
+                int(arguments.get("max_entries", 120)),
+            )
+        if action.tool == "find_symbol":
+            return self.find_symbol(
+                str(arguments.get("name", "")),
+                str(arguments.get("path", "")),
+                str(arguments.get("kind", "any")),
+                int(arguments.get("max_results", 50)),
             )
         if action.tool == "search_code":
             return self.search_code(
@@ -59,16 +207,8 @@ class ReadOnlyRepositoryTools:
                 )
             )
         if action.tool == "finish":
-            raw = arguments.get("functions", arguments.get("answer", []))
-            if isinstance(raw, str):
-                functions = tuple(
-                    line.strip() for line in raw.splitlines() if line.strip()
-                )
-            elif isinstance(raw, list):
-                functions = tuple(str(item).strip() for item in raw if str(item).strip())
-            else:
-                raise ToolError("finish expects a string or list of functions.")
-            self.final_answer = functions
+            functions = self.finish_functions(arguments)
+            self.accept_finish(functions)
             return "Task finished."
         raise ToolError(f"Unsupported tool: {action.tool}")
 
@@ -81,6 +221,8 @@ class ReadOnlyRepositoryTools:
         return candidate
 
     def list_files(self, relative: str, max_entries: int) -> str:
+        """Deprecated recursive listing retained for offline compatibility."""
+
         target = self._safe_path(relative)
         if not target.is_dir():
             raise ToolError(f"Not a directory: {relative}")
@@ -92,6 +234,151 @@ class ReadOnlyRepositoryTools:
             if len(entries) >= max(1, min(max_entries, 500)):
                 break
         return "\n".join(entries) or "(no files)"
+
+    def list_tree(
+        self,
+        relative: str,
+        max_depth: int,
+        max_entries: int,
+    ) -> str:
+        target = self._safe_path(relative)
+        if not target.is_dir():
+            raise ToolError(f"Not a directory: {relative}")
+        depth_limit = max(1, min(max_depth, 4))
+        entry_limit = max(1, min(max_entries, 500))
+        entries: list[str] = []
+
+        def visible(path: Path) -> bool:
+            return (
+                not path.name.startswith(".")
+                and path.name not in IGNORED_DIRECTORY_NAMES
+                and not path.is_symlink()
+            )
+
+        def walk(directory: Path, depth: int) -> None:
+            if len(entries) >= entry_limit:
+                return
+            children = [path for path in directory.iterdir() if visible(path)]
+            directories = sorted(path for path in children if path.is_dir())
+            files = sorted(path for path in children if path.is_file())
+            for path in (*directories, *files):
+                display = path.relative_to(self.root).as_posix()
+                entries.append(display + ("/" if path.is_dir() else ""))
+                if len(entries) >= entry_limit:
+                    return
+            if depth >= depth_limit:
+                return
+            for path in directories:
+                walk(path, depth + 1)
+                if len(entries) >= entry_limit:
+                    return
+
+        walk(target, 1)
+        return "\n".join(entries) or "(no entries)"
+
+    def find_symbol(
+        self,
+        name: str,
+        relative: str,
+        kind: str,
+        max_results: int,
+    ) -> str:
+        if not name.strip():
+            raise ToolError("find_symbol requires a symbol name.")
+        if kind not in {"any", "class", "function"}:
+            raise ToolError("find_symbol kind must be any, class, or function.")
+        target = self._safe_path(relative)
+        if not target.exists():
+            raise ToolError(f"Path does not exist: {relative}")
+        prefix = target.relative_to(self.root).as_posix()
+        if prefix == ".":
+            prefix = ""
+        matches = self.symbols.find(
+            name=name.strip(),
+            path_prefix=prefix,
+            kind=kind,
+            max_results=max_results,
+        )
+        if not matches:
+            return "(no symbol definitions)"
+        return "\n".join(
+            f"{item.path}:{item.line}:{item.qualified_name} [{item.kind}]"
+            for item in matches
+        )
+
+    @staticmethod
+    def finish_functions(arguments: dict) -> tuple[str, ...]:
+        raw = arguments.get("functions", arguments.get("answer", []))
+        if isinstance(raw, str):
+            return tuple(
+                line.strip() for line in raw.splitlines() if line.strip()
+            )
+        if isinstance(raw, list):
+            return tuple(
+                str(item).strip() for item in raw if str(item).strip()
+            )
+        raise ToolError("finish expects a string or list of functions.")
+
+    def accept_finish(self, functions: tuple[str, ...]) -> None:
+        self.final_answer = functions
+
+    def validate_functions(
+        self,
+        functions: tuple[str, ...],
+    ) -> tuple[FunctionValidationError, ...]:
+        errors: list[FunctionValidationError] = []
+        if not functions:
+            return (
+                FunctionValidationError(
+                    value="<empty>",
+                    message="finish requires at least one function",
+                ),
+            )
+        for value in functions:
+            if ":" not in value:
+                errors.append(
+                    FunctionValidationError(
+                        value=value,
+                        message="expected path.py:QualifiedName",
+                    )
+                )
+                continue
+            raw_path, qualified_name = value.split(":", 1)
+            raw_path = os.path.normpath(
+                raw_path.strip().lstrip("/")
+            ).replace(os.sep, "/")
+            qualified_name = qualified_name.strip()
+            try:
+                target = self._safe_path(raw_path)
+            except ToolError as error:
+                errors.append(
+                    FunctionValidationError(value=value, message=str(error))
+                )
+                continue
+            if not target.is_file():
+                errors.append(
+                    FunctionValidationError(
+                        value=value,
+                        message="file does not exist",
+                    )
+                )
+                continue
+            if target.suffix != ".py":
+                errors.append(
+                    FunctionValidationError(
+                        value=value,
+                        message="only Python symbols are supported",
+                    )
+                )
+                continue
+            if not self.symbols.contains(raw_path, qualified_name):
+                errors.append(
+                    FunctionValidationError(
+                        value=value,
+                        message="symbol is not defined in that file",
+                    )
+                )
+        return tuple(errors)
 
     def search_code(self, query: str, relative: str, glob: str) -> str:
         if not query:

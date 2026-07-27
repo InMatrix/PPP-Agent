@@ -22,6 +22,24 @@ from .workspace import RepositoryWorkspace
 ProgressCallback = Callable[[str], None]
 ProviderFactory = Callable[[Episode, int | None], AgentProvider]
 SimulatorFactory = Callable[[Episode], UserSimulator]
+COMPARISON_METRICS = (
+    "exact_localization_rate",
+    "mean_productivity_f1",
+    "agent_finish_rate",
+    "natural_finish_rate",
+    "deadline_finish_rate",
+    "empty_prediction_rate",
+    "mean_total_reward",
+    "question_rate",
+    "preference_compliance_rate_when_judged",
+    "mean_turns",
+    "mean_model_calls",
+    "mean_duplicate_actions_suppressed",
+    "finish_validation_pass_rate",
+    "finish_correction_rate",
+    "invalid_prediction_episode_rate",
+    "mean_duration_seconds",
+)
 
 
 def _mean(values: Sequence[float]) -> float | None:
@@ -117,7 +135,19 @@ def summarize_records(
     failed = [item for item in records if item.get("status") == "failed"]
     rewards = [item["report"]["reward"] for item in completed]
     durations = [float(item["duration_seconds"]) for item in completed]
-    turns = [len(item["report"]["trajectory"]) for item in completed]
+    turns = [
+        max(
+            (
+                int(step.get("turn", position))
+                for position, step in enumerate(
+                    item["report"]["trajectory"],
+                    start=1,
+                )
+            ),
+            default=0,
+        )
+        for item in completed
+    ]
     questions = [int(reward["questions_asked"]) for reward in rewards]
     disclosure_levels = [
         int(level)
@@ -159,6 +189,21 @@ def summarize_records(
     model_calls = [
         int(item["report"].get("model_calls", len(item["report"]["trajectory"])))
         for item in completed
+    ]
+    validation_results = [
+        item["report"]["finish_validation_passed"]
+        for item in completed
+        if item["report"].get("finish_validation_passed") is not None
+    ]
+    corrections = [
+        bool(item["report"]["finish_correction_attempted"])
+        for item in completed
+        if "finish_correction_attempted" in item["report"]
+    ]
+    invalid_predictions = [
+        item["report"]["invalid_predictions"]
+        for item in completed
+        if "invalid_predictions" in item["report"]
     ]
 
     summary = {
@@ -236,6 +281,21 @@ def summarize_records(
         ),
         "mean_turns": _mean([float(value) for value in turns]),
         "mean_model_calls": _mean([float(value) for value in model_calls]),
+        "finish_validation_pass_rate": (
+            sum(validation_results)
+            / len(validation_results)
+            if validation_results
+            else None
+        ),
+        "finish_correction_rate": (
+            sum(corrections) / len(corrections) if corrections else None
+        ),
+        "invalid_prediction_episode_rate": (
+            sum(bool(values) for values in invalid_predictions)
+            / len(invalid_predictions)
+            if invalid_predictions
+            else None
+        ),
         "mean_duration_seconds": _mean(durations),
         "failures": [
             {
@@ -261,6 +321,20 @@ def summarize_records(
                 include_seed_groups=False,
             )
             for seed in sorted(seeds, key=lambda value: (value is None, value))
+        }
+        instances = {
+            item["episode"]["instance_id"] for item in records
+        }
+        summary["by_instance"] = {
+            instance_id: summarize_records(
+                [
+                    item
+                    for item in records
+                    if item["episode"]["instance_id"] == instance_id
+                ],
+                include_seed_groups=False,
+            )
+            for instance_id in sorted(instances)
         }
     return summary
 
@@ -292,6 +366,11 @@ def render_markdown_summary(
         f"- Empty prediction rate: {metric('empty_prediction_rate')}",
         f"- Episodes with suppressed duplicates: "
         f"{metric('duplicate_action_episode_rate')}",
+        f"- Finish validation pass rate: "
+        f"{metric('finish_validation_pass_rate')}",
+        f"- Finish correction rate: {metric('finish_correction_rate')}",
+        f"- Invalid prediction episode rate: "
+        f"{metric('invalid_prediction_episode_rate')}",
         f"- Mean total reward: {metric('mean_total_reward')}",
         f"- Question rate: {metric('question_rate')}",
         f"- Mean disclosure level: "
@@ -329,7 +408,7 @@ def render_markdown_summary(
             lines.append(
                 f"| {position} | {episode.get('inference_seed', '—')} | "
                 f"`{episode['instance_id']}` | `{episode['preference']}` | "
-                f"{len(report['trajectory'])} | "
+                f"{max((step.get('turn', index) for index, step in enumerate(report['trajectory'], start=1)), default=0)} | "
                 f"{report.get('model_calls', len(report['trajectory']))} | "
                 f"{duplicates} | {reward['questions_asked']} | "
                 f"{float(reward['productivity']):.3f} | "
@@ -342,6 +421,97 @@ def render_markdown_summary(
                 f"— | — | — | — | — | — | failed: {item['error_type']} |"
             )
     lines.append("")
+    return "\n".join(lines)
+
+
+def compare_summaries(
+    control: dict[str, Any],
+    candidate: dict[str, Any],
+) -> dict[str, Any]:
+    metrics: dict[str, Any] = {}
+    for name in COMPARISON_METRICS:
+        control_value = control.get(name)
+        candidate_value = candidate.get(name)
+        metrics[name] = {
+            "control": control_value,
+            "candidate": candidate_value,
+            "delta": (
+                candidate_value - control_value
+                if control_value is not None and candidate_value is not None
+                else None
+            ),
+        }
+    f1_gain = metrics["mean_productivity_f1"]["delta"]
+    reward_delta = metrics["mean_total_reward"]["delta"]
+    preference_delta = metrics[
+        "preference_compliance_rate_when_judged"
+    ]["delta"]
+    completion_ok = (
+        candidate.get("episodes_failed") == 0
+        and candidate.get("episodes_completed")
+        == candidate.get("episodes_requested")
+        and candidate.get("empty_prediction_rate") == 0
+    )
+    reward_non_regression = reward_delta is None or reward_delta >= 0
+    preference_non_regression = (
+        preference_delta is None or preference_delta >= 0
+    )
+    continue_with_4b = (
+        completion_ok
+        and f1_gain is not None
+        and f1_gain >= 0.10
+        and reward_non_regression
+        and preference_non_regression
+    )
+    return {
+        "metrics": metrics,
+        "decision": {
+            "completion_ok": completion_ok,
+            "f1_gain_threshold": 0.10,
+            "f1_gain_met": f1_gain is not None and f1_gain >= 0.10,
+            "reward_non_regression": reward_non_regression,
+            "preference_non_regression": preference_non_regression,
+            "recommendation": (
+                "continue_with_4b"
+                if continue_with_4b
+                else "compare_larger_model"
+            ),
+        },
+    }
+
+
+def render_markdown_comparison(comparison: dict[str, Any]) -> str:
+    lines = [
+        "# Control vs candidate",
+        "",
+        "| Metric | Control | Candidate | Delta |",
+        "|---|---:|---:|---:|",
+    ]
+    for name, values in comparison["metrics"].items():
+        rendered = [
+            "n/a" if values[key] is None else f"{values[key]:.3f}"
+            for key in ("control", "candidate", "delta")
+        ]
+        lines.append(
+            f"| `{name}` | {rendered[0]} | {rendered[1]} | {rendered[2]} |"
+        )
+    decision = comparison["decision"]
+    lines.extend(
+        [
+            "",
+            "## Decision",
+            "",
+            f"- Completion criterion: `{decision['completion_ok']}`",
+            f"- F1 gain ≥ {decision['f1_gain_threshold']:.2f}: "
+            f"`{decision['f1_gain_met']}`",
+            f"- Reward non-regression: "
+            f"`{decision['reward_non_regression']}`",
+            f"- Preference non-regression: "
+            f"`{decision['preference_non_regression']}`",
+            f"- Recommendation: `{decision['recommendation']}`",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 

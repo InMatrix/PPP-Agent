@@ -141,6 +141,17 @@ The live runner manages the turn budget explicitly:
 Reports distinguish `natural_finish`, `deadline_finish`, and `turn_limit`, and
 record how many duplicate actions were suppressed.
 
+Navigation v2 keeps the surface read-only and exposes six focused actions:
+`list_tree`, `find_symbol`, `search_code`, `read_file`, `ask_user`, and
+`finish`. `list_tree` shows shallow directory-first structure without hidden
+or cache noise. `find_symbol` uses a cached Python AST index to return exact
+definition paths, lines, and qualified names.
+
+The first exact duplicate proposal receives one retry without consuming another
+logical turn. Finish entries are checked against repository files and AST
+symbols; one invalid finish receives a correction attempt, and a still-invalid
+correction is retained for scoring but marked unverified in the report.
+
 `--sample-seed` controls which dataset rows are selected, while
 `--inference-seeds` controls LM Studio generation. Multiple inference seeds
 expand the fixed episode sample into independently persisted evaluation cases.
@@ -153,6 +164,16 @@ The output directory contains:
 - `episodes/*.json`: complete trajectory and reward, or an isolated error.
 - `summary.json`: aggregate metrics for analysis.
 - `summary.md`: a compact, human-readable baseline report.
+
+Compare two completed evaluation directories and apply the configured F1,
+reward, preference, and completion decision rule with:
+
+```bash
+simplified/.venv/bin/ppp-simple compare \
+  --control-dir simplified/results/control-termination-v1-seeded \
+  --candidate-dir simplified/results/candidate-navigation-v2-seeded \
+  --output-dir simplified/results/control-vs-navigation-v2
+```
 
 The primary metrics are exact localization rate, mean function F1, natural and
 deadline finish rates, empty prediction rate, suppressed duplicate actions,

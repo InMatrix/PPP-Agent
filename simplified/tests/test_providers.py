@@ -31,8 +31,8 @@ def test_openai_compatible_qwen_adapter() -> None:
                         "message": {
                             "content": (
                                 '<think>Need a file list.</think>'
-                                '{"tool":"list_files",'
-                                '"arguments":{"path":""},'
+                                '{"tool":"list_tree",'
+                                '"arguments":{"path":"","max_depth":2},'
                                 '"reasoning":"inspect"}'
                             )
                         }
@@ -46,7 +46,7 @@ def test_openai_compatible_qwen_adapter() -> None:
         system_prompt="system",
         messages=[{"role": "user", "content": "issue"}],
     )
-    assert action.tool == "list_files"
+    assert action.tool == "list_tree"
 
 
 def test_openai_compatible_qwen_uses_reasoning_content_fallback() -> None:

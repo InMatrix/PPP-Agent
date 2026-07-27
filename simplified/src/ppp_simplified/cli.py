@@ -12,7 +12,12 @@ from datetime import datetime
 from pathlib import Path
 
 from .data import load_episode, select_evaluation_sample
-from .evaluation import BatchEvaluator, build_manifest
+from .evaluation import (
+    BatchEvaluator,
+    build_manifest,
+    compare_summaries,
+    render_markdown_comparison,
+)
 from .providers import (
     OpenAICompatibleAgent,
     ScriptedSmokeAgent,
@@ -219,6 +224,22 @@ def command_evaluate(args: argparse.Namespace) -> int:
     return 0 if summary["episodes_failed"] == 0 else 1
 
 
+def command_compare(args: argparse.Namespace) -> int:
+    control = json.loads((args.control_dir / "summary.json").read_text())
+    candidate = json.loads((args.candidate_dir / "summary.json").read_text())
+    comparison = compare_summaries(control, candidate)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    (args.output_dir / "comparison.json").write_text(
+        json.dumps(comparison, indent=2) + "\n"
+    )
+    (args.output_dir / "comparison.md").write_text(
+        render_markdown_comparison(comparison)
+    )
+    print(json.dumps(comparison["decision"], indent=2))
+    print(f"comparison: {args.output_dir / 'comparison.md'}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -297,8 +318,8 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         help="Comma-separated LM Studio sampling seeds.",
     )
-    evaluate.add_argument("--policy-label", default="termination-v1")
-    evaluate.add_argument("--tool-schema-version", default="v1")
+    evaluate.add_argument("--policy-label", default="navigation-v2")
+    evaluate.add_argument("--tool-schema-version", default="v2")
     evaluate.add_argument(
         "--preferences",
         default=",".join(DEFAULT_EVALUATION_PREFERENCES),
@@ -327,6 +348,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--gemini-model",
         default="gemini-3.5-flash-lite",
     )
+
+    compare = subparsers.add_parser("compare")
+    compare.add_argument("--control-dir", type=Path, required=True)
+    compare.add_argument("--candidate-dir", type=Path, required=True)
+    compare.add_argument("--output-dir", type=Path, required=True)
+    compare.set_defaults(handler=command_compare)
     return parser
 
 

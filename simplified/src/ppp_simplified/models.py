@@ -42,6 +42,8 @@ class Episode:
 class AgentAction:
     tool: Literal[
         "list_files",
+        "list_tree",
+        "find_symbol",
         "search_code",
         "read_file",
         "ask_user",
@@ -65,6 +67,8 @@ class TrajectoryStep:
     action: AgentAction
     observation: str
     duplicate_suppressed: bool = False
+    attempt: int = 1
+    executed: bool = True
 
 
 @dataclass(frozen=True)
@@ -95,6 +99,9 @@ class RunReport:
     duplicate_actions_suppressed: int = 0
     inference_seed: int | None = None
     model_calls: int = 0
+    finish_validation_passed: bool | None = None
+    finish_correction_attempted: bool = False
+    invalid_predictions: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

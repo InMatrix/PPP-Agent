@@ -42,7 +42,7 @@ def test_end_to_end_offline_run(tmp_path: Path) -> None:
     assert report.reward.productivity == 1.0
     assert report.reward.questions_asked == 1
     assert [step.action.tool for step in report.trajectory] == [
-        "list_files",
+        "list_tree",
         "ask_user",
         "finish",
     ]
@@ -78,7 +78,11 @@ class RepeatingAgent:
 
 def test_runner_suppresses_identical_actions(tmp_path: Path) -> None:
     (tmp_path / "pkg").mkdir()
-    (tmp_path / "pkg/widget.py").write_text("class Widget:\n    pass\n")
+    (tmp_path / "pkg/widget.py").write_text(
+        "class Widget:\n"
+        "    def run(self):\n"
+        "        pass\n"
+    )
 
     report = AgentRunner(
         provider=RepeatingAgent(),
@@ -88,8 +92,13 @@ def test_runner_suppresses_identical_actions(tmp_path: Path) -> None:
 
     assert report.duplicate_actions_suppressed == 1
     assert report.trajectory[1].duplicate_suppressed is True
+    assert report.trajectory[1].attempt == 1
+    assert report.trajectory[1].executed is False
+    assert report.trajectory[2].turn == 2
+    assert report.trajectory[2].attempt == 2
     assert "Duplicate action suppressed" in report.trajectory[1].observation
     assert report.termination == "natural_finish"
+    assert report.model_calls == 3
 
 
 class DeadlineAgent:
@@ -122,7 +131,11 @@ class DeadlineAgent:
 
 def test_runner_reserves_last_turn_for_finish(tmp_path: Path) -> None:
     (tmp_path / "pkg").mkdir()
-    (tmp_path / "pkg/widget.py").write_text("class Widget:\n    pass\n")
+    (tmp_path / "pkg/widget.py").write_text(
+        "class Widget:\n"
+        "    def run(self):\n"
+        "        pass\n"
+    )
     provider = DeadlineAgent()
 
     report = AgentRunner(
@@ -136,3 +149,80 @@ def test_runner_reserves_last_turn_for_finish(tmp_path: Path) -> None:
     assert "FINALIZATION TURN" in provider.prompts[1]
     assert report.termination == "deadline_finish"
     assert report.predicted_functions == ("pkg/widget.py:Widget.run",)
+    assert report.finish_validation_passed is True
+
+
+class CorrectingFinishAgent:
+    name = "correcting-finish-agent"
+
+    def __init__(self, always_invalid: bool = False) -> None:
+        self.calls = 0
+        self.always_invalid = always_invalid
+
+    def next_action(
+        self,
+        *,
+        system_prompt,
+        messages,
+        allowed_tools=None,
+    ) -> AgentAction:
+        del system_prompt, messages, allowed_tools
+        self.calls += 1
+        function = (
+            "pkg/widget.py:Widget.still_missing"
+            if self.always_invalid and self.calls > 1
+            else (
+                "pkg/widget.py:Widget.run"
+                if self.calls > 1
+                else "missing.py:Widget.run"
+            )
+        )
+        return AgentAction(
+            tool="finish",
+            arguments={"functions": [function]},
+        )
+
+
+def test_runner_corrects_invalid_finish_once(tmp_path: Path) -> None:
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg/widget.py").write_text(
+        "class Widget:\n"
+        "    def run(self):\n"
+        "        pass\n"
+    )
+
+    report = AgentRunner(
+        provider=CorrectingFinishAgent(),
+        simulator=DeterministicUserSimulator(),
+        max_turns=1,
+    ).run(episode(), tmp_path)
+
+    assert report.model_calls == 2
+    assert report.finish_correction_attempted is True
+    assert report.finish_validation_passed is True
+    assert report.invalid_predictions == ()
+    assert report.predicted_functions == ("pkg/widget.py:Widget.run",)
+    assert [step.executed for step in report.trajectory] == [False, True]
+    assert [step.attempt for step in report.trajectory] == [1, 2]
+
+
+def test_runner_preserves_unverified_correction_for_scoring(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg/widget.py").write_text("class Widget:\n    pass\n")
+
+    report = AgentRunner(
+        provider=CorrectingFinishAgent(always_invalid=True),
+        simulator=DeterministicUserSimulator(),
+        max_turns=1,
+    ).run(episode(), tmp_path)
+
+    assert report.finish_correction_attempted is True
+    assert report.finish_validation_passed is False
+    assert report.invalid_predictions == (
+        "pkg/widget.py:Widget.still_missing",
+    )
+    assert report.predicted_functions == (
+        "pkg/widget.py:Widget.still_missing",
+    )

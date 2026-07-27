@@ -18,9 +18,10 @@ Inspect the pinned repository with the provided tools. Ask the user only when
 their answer could change your localization decision and keep the question easy
 to answer. Never propose edits.
 
-Search for literal function or class symbols before broad concepts. Inspect
-exact search matches before guessing line ranges. Do not repeat an identical
-tool call after it returns the same observation.
+Use list_tree to understand package structure and find_symbol for named classes,
+functions, or methods before broad text search. Inspect exact matches before
+guessing line ranges. Do not repeat an identical tool call after it returns the
+same observation. Only finish with functions supported by repository evidence.
 
 Finish with one entry per function:
 path/to/file.py:QualifiedName
@@ -68,6 +69,43 @@ class AgentRunner:
         duplicate_actions_suppressed = 0
         model_calls = 0
         termination = "turn_limit"
+        finish_validation_passed: bool | None = None
+        finish_correction_attempted = False
+        invalid_predictions: tuple[str, ...] = ()
+
+        def record_step(
+            *,
+            turn: int,
+            attempt: int,
+            action,
+            observation: str,
+            duplicate_suppressed: bool,
+            executed: bool,
+        ) -> None:
+            trajectory.append(
+                TrajectoryStep(
+                    turn=turn,
+                    action=action,
+                    observation=observation,
+                    duplicate_suppressed=duplicate_suppressed,
+                    attempt=attempt,
+                    executed=executed,
+                )
+            )
+            messages.extend(
+                [
+                    {
+                        "role": "assistant",
+                        "content": (
+                            f"Action: {action.tool}\n"
+                            f"Arguments: {action.arguments}\n"
+                            f"Reasoning: {action.reasoning}"
+                        ),
+                    },
+                    {"role": "user", "content": f"OBSERVATION:\n{observation}"},
+                ]
+            )
+
         for turn in range(1, self.max_turns + 1):
             remaining = self.max_turns - turn
             final_turn = remaining == 0
@@ -88,60 +126,133 @@ class AgentRunner:
                     "One exploration turn remains before mandatory finalization. "
                     "Gather only evidence that can change the final answer."
                 )
-            model_calls += 1
-            action = self.provider.next_action(
-                system_prompt=budget_prompt,
-                messages=messages,
-                allowed_tools=allowed_tools,
-            )
-            signature = json.dumps(
-                {
-                    "tool": action.tool,
-                    "arguments": action.arguments,
-                },
-                sort_keys=True,
-                default=str,
-            )
-            duplicate_suppressed = signature in observations_by_action
-            if duplicate_suppressed:
-                duplicate_actions_suppressed += 1
-                observation = (
-                    "Duplicate action suppressed. This exact tool call already "
-                    "produced the observation below. Choose a different query, "
-                    "inspect a result, ask the user, or finish.\n\n"
-                    f"PREVIOUS OBSERVATION:\n{observations_by_action[signature]}"
+
+            attempt = 1
+            duplicate_retry_available = not final_turn
+            finish_correction_available = True
+            while True:
+                model_calls += 1
+                action = self.provider.next_action(
+                    system_prompt=budget_prompt,
+                    messages=messages,
+                    allowed_tools=allowed_tools,
                 )
-            else:
+                signature = json.dumps(
+                    {
+                        "tool": action.tool,
+                        "arguments": action.arguments,
+                    },
+                    sort_keys=True,
+                    default=str,
+                )
+                duplicate_suppressed = (
+                    action.tool != "finish"
+                    and signature in observations_by_action
+                )
+                if duplicate_suppressed:
+                    duplicate_actions_suppressed += 1
+                    observation = (
+                        "Duplicate action suppressed. This exact tool call "
+                        "already produced the observation below. Choose a "
+                        "different query, inspect a result, ask the user, or "
+                        "finish.\n\nPREVIOUS OBSERVATION:\n"
+                        f"{observations_by_action[signature]}"
+                    )
+                    record_step(
+                        turn=turn,
+                        attempt=attempt,
+                        action=action,
+                        observation=observation,
+                        duplicate_suppressed=True,
+                        executed=False,
+                    )
+                    if duplicate_retry_available:
+                        duplicate_retry_available = False
+                        attempt += 1
+                        continue
+                    break
+
+                if action.tool == "finish":
+                    try:
+                        functions = tools.finish_functions(action.arguments)
+                        validation_errors = tools.validate_functions(functions)
+                    except Exception as error:
+                        functions = ()
+                        validation_errors = tools.validate_functions(functions)
+                        observation_prefix = f"Invalid finish arguments: {error}\n"
+                    else:
+                        observation_prefix = ""
+
+                    if validation_errors and finish_correction_available:
+                        finish_correction_available = False
+                        finish_correction_attempted = True
+                        invalid_predictions = tuple(
+                            item.value for item in validation_errors
+                        )
+                        observation = (
+                            observation_prefix
+                            + "Finish validation failed. Correct every invalid "
+                            "entry and call finish again:\n"
+                            + "\n".join(
+                                f"- {item.value!r}: {item.message}"
+                                for item in validation_errors
+                            )
+                        )
+                        record_step(
+                            turn=turn,
+                            attempt=attempt,
+                            action=action,
+                            observation=observation,
+                            duplicate_suppressed=False,
+                            executed=False,
+                        )
+                        budget_prompt += (
+                            "\nCORRECTION ATTEMPT: Use the validation errors "
+                            "in the conversation and return finish again."
+                        )
+                        allowed_tools = ("finish",)
+                        attempt += 1
+                        continue
+
+                    tools.accept_finish(functions)
+                    finish_validation_passed = not validation_errors
+                    invalid_predictions = tuple(
+                        item.value for item in validation_errors
+                    )
+                    observation = (
+                        "Task finished."
+                        if not validation_errors
+                        else "Task finished with unverified predictions."
+                    )
+                    record_step(
+                        turn=turn,
+                        attempt=attempt,
+                        action=action,
+                        observation=observation,
+                        duplicate_suppressed=False,
+                        executed=True,
+                    )
+                    termination = (
+                        "deadline_finish" if final_turn else "natural_finish"
+                    )
+                    break
+
                 try:
                     observation = tools.execute(action)
                 except Exception as error:
                     observation = f"Tool error: {error}"
                 observations_by_action[signature] = observation
-            trajectory.append(
-                TrajectoryStep(
+                record_step(
                     turn=turn,
+                    attempt=attempt,
                     action=action,
                     observation=observation,
-                    duplicate_suppressed=duplicate_suppressed,
+                    duplicate_suppressed=False,
+                    executed=True,
                 )
-            )
-            messages.extend(
-                [
-                    {
-                        "role": "assistant",
-                        "content": (
-                            f"Action: {action.tool}\n"
-                            f"Arguments: {action.arguments}\n"
-                            f"Reasoning: {action.reasoning}"
-                        ),
-                    },
-                    {"role": "user", "content": f"OBSERVATION:\n{observation}"},
-                ]
-            )
+                break
+
             if tools.final_answer is not None:
-                termination = (
-                    "deadline_finish" if final_turn else "natural_finish"
-                )
                 break
         predicted = tools.final_answer or ()
         reward = calculate_reward(
@@ -161,4 +272,7 @@ class AgentRunner:
             duplicate_actions_suppressed=duplicate_actions_suppressed,
             inference_seed=getattr(self.provider, "seed", None),
             model_calls=model_calls,
+            finish_validation_passed=finish_validation_passed,
+            finish_correction_attempted=finish_correction_attempted,
+            invalid_predictions=invalid_predictions,
         )

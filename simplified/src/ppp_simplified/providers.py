@@ -16,13 +16,14 @@ from .models import AgentAction
 
 ACTION_SCHEMA = """Return exactly one JSON object:
 {
-  "tool": "list_files|search_code|read_file|ask_user|finish",
+  "tool": "list_tree|find_symbol|search_code|read_file|ask_user|finish",
   "arguments": { ... },
   "reasoning": "one concise sentence"
 }
 
 Tool arguments:
-- list_files: {"path": "", "max_entries": 120}
+- list_tree: {"path": "", "max_depth": 2, "max_entries": 120}
+- find_symbol: {"name": "exact_name", "path": "", "kind": "any|class|function", "max_results": 50}
 - search_code: {"query": "literal or regex", "path": "", "glob": "*.py"}
 - read_file: {"path": "relative/file.py", "start_line": 1, "end_line": 220}
 - ask_user: {"question": "one targeted, easy-to-answer question"}
@@ -30,7 +31,8 @@ Tool arguments:
 """
 
 TOOL_NAMES = (
-    "list_files",
+    "list_tree",
+    "find_symbol",
     "search_code",
     "read_file",
     "ask_user",
@@ -213,8 +215,8 @@ class ScriptedSmokeAgent(AgentProvider):
         self.turn += 1
         if self.turn == 1:
             return AgentAction(
-                tool="list_files",
-                arguments={"path": "", "max_entries": 30},
+                tool="list_tree",
+                arguments={"path": "", "max_depth": 2, "max_entries": 30},
                 reasoning="Verify that the pinned repository is accessible.",
             )
         if self.turn == 2:
