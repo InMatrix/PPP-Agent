@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ppp-simplified"
+version = "0.1.0"
+description = "A minimal end-to-end PPP-Agent vertical slice"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.28.0",
+  "pyarrow>=19.0.0",
+]
+
+[project.optional-dependencies]
+gemini = ["google-genai>=2.0.0"]
+test = ["pytest>=8.0.0"]
+
+[project.scripts]
+ppp-simple = "ppp_simplified.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ppp_simplified"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

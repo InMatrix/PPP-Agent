@@ -1,0 +1,11 @@
+.DS_Store
+data/
+envs/gym_data/
+envs/_repo_cache/
+simplified/.venv/
+simplified/.env
+simplified/workspaces/
+simplified/results/
+*.pyc
+__pycache__/
+.pytest_cache/
