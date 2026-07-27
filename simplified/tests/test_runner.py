@@ -231,6 +231,9 @@ def test_runner_preserves_unverified_correction_for_scoring(
 class PersistentlyRepeatingAgent:
     name = "persistently-repeating-agent"
 
+    def __init__(self) -> None:
+        self.allowed_tools = []
+
     def next_action(
         self,
         *,
@@ -239,10 +242,16 @@ class PersistentlyRepeatingAgent:
         allowed_tools=None,
     ) -> AgentAction:
         del system_prompt, messages
+        self.allowed_tools.append(allowed_tools)
         if allowed_tools == ("finish",):
             return AgentAction(
                 tool="finish",
                 arguments={"functions": ["pkg/widget.py:Widget.run"]},
+            )
+        if allowed_tools is not None and "search_code" not in allowed_tools:
+            return AgentAction(
+                tool="list_tree",
+                arguments={"path": "", "max_depth": 2, "max_entries": 20},
             )
         return AgentAction(
             tool="search_code",
@@ -260,18 +269,21 @@ def test_navigation_v3_retries_each_duplicate_signature_only_once(
         "        pass\n"
     )
 
+    provider = PersistentlyRepeatingAgent()
     report = AgentRunner(
-        provider=PersistentlyRepeatingAgent(),
+        provider=provider,
         simulator=DeterministicUserSimulator(),
         max_turns=4,
         policy_version="navigation-v3",
     ).run(episode(), tmp_path)
 
-    assert report.duplicate_actions_suppressed == 3
+    assert report.duplicate_actions_suppressed == 2
     assert report.model_calls == 5
     assert [
         (step.turn, step.attempt)
         for step in report.trajectory
         if step.duplicate_suppressed
-    ] == [(2, 1), (2, 2), (3, 1)]
+    ] == [(2, 1), (2, 2)]
+    assert provider.allowed_tools[3] is not None
+    assert "search_code" not in provider.allowed_tools[3]
     assert report.predicted_functions == ("pkg/widget.py:Widget.run",)

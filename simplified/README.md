@@ -206,7 +206,9 @@ canonical qualified name and returns its complete source plus nearby sibling
 definitions. Its prompt asks the agent to trace supporting call/data paths
 before finalizing. An exact action signature receives at most one duplicate
 retry across the entire episode, preventing a stuck proposal from multiplying
-model calls on every logical turn. Navigation v2 remains selectable for matched
+model calls on every logical turn. If the immediate retry is also the same
+duplicate, that tool is removed from the next turn's schema to force a
+different navigation strategy. Navigation v2 remains selectable for matched
 control runs.
 
 `--sample-seed` controls which dataset rows are selected, while

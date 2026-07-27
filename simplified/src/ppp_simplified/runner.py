@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from .models import Episode, RunReport, TrajectoryStep
-from .providers import AgentProvider
+from .providers import AgentProvider, TOOL_NAMES
 from .rewards import calculate_reward
 from .simulator import UserSimulator
 from .tools import ReadOnlyRepositoryTools
@@ -96,6 +96,7 @@ class AgentRunner:
         trajectory: list[TrajectoryStep] = []
         observations_by_action: dict[str, str] = {}
         retried_duplicate_signatures: set[str] = set()
+        blocked_tool: str | None = None
         duplicate_actions_suppressed = 0
         model_calls = 0
         termination = "turn_limit"
@@ -145,7 +146,13 @@ class AgentRunner:
                 f"TURN BUDGET: This is turn {turn} of {self.max_turns}; "
                 f"{remaining} turn(s) remain after this action.\n"
             )
-            allowed_tools = None
+            allowed_tools = (
+                tuple(
+                    tool for tool in TOOL_NAMES if tool != blocked_tool
+                )
+                if self.policy_version == "navigation-v3" and blocked_tool
+                else None
+            )
             if final_turn:
                 budget_prompt += (
                     "FINALIZATION TURN: Return your best-supported localization "
@@ -208,6 +215,8 @@ class AgentRunner:
                         duplicate_retry_available = False
                         attempt += 1
                         continue
+                    if self.policy_version == "navigation-v3":
+                        blocked_tool = action.tool
                     break
 
                 if action.tool == "finish":
@@ -280,6 +289,7 @@ class AgentRunner:
                 except Exception as error:
                     observation = f"Tool error: {error}"
                 observations_by_action[signature] = observation
+                blocked_tool = None
                 record_step(
                     turn=turn,
                     attempt=attempt,
