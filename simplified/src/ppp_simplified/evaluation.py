@@ -99,6 +99,23 @@ def summarize_records(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
         == "finish"
         for item in completed
     ]
+    terminations = [
+        item["report"].get("termination")
+        or ("natural_finish" if did_finish else "turn_limit")
+        for item, did_finish in zip(completed, finished)
+    ]
+    duplicate_counts = [
+        int(
+            item["report"].get(
+                "duplicate_actions_suppressed",
+                sum(
+                    bool(step.get("duplicate_suppressed"))
+                    for step in item["report"]["trajectory"]
+                ),
+            )
+        )
+        for item in completed
+    ]
     judged_preferences = [
         bool(reward["preference_ok"])
         for reward in rewards
@@ -118,6 +135,24 @@ def summarize_records(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "mean_productivity_f1": _mean(productivities),
         "agent_finish_rate": (
             sum(finished) / len(finished) if finished else None
+        ),
+        "natural_finish_rate": (
+            sum(value == "natural_finish" for value in terminations)
+            / len(terminations)
+            if terminations
+            else None
+        ),
+        "deadline_finish_rate": (
+            sum(value == "deadline_finish" for value in terminations)
+            / len(terminations)
+            if terminations
+            else None
+        ),
+        "turn_limit_rate": (
+            sum(value == "turn_limit" for value in terminations)
+            / len(terminations)
+            if terminations
+            else None
         ),
         "empty_prediction_rate": (
             sum(not values for values in predictions) / len(predictions)
@@ -143,6 +178,15 @@ def summarize_records(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
         ),
         "mean_questions_per_episode": _mean(
             [float(value) for value in questions]
+        ),
+        "mean_duplicate_actions_suppressed": _mean(
+            [float(value) for value in duplicate_counts]
+        ),
+        "duplicate_action_episode_rate": (
+            sum(value > 0 for value in duplicate_counts)
+            / len(duplicate_counts)
+            if duplicate_counts
+            else None
         ),
         "mean_disclosure_level_per_question": _mean(
             [float(value) for value in disclosure_levels]
@@ -186,7 +230,11 @@ def render_markdown_summary(
         f"- Exact localization rate: {metric('exact_localization_rate')}",
         f"- Mean function F1: {metric('mean_productivity_f1')}",
         f"- Agent finish rate: {metric('agent_finish_rate')}",
+        f"- Natural finish rate: {metric('natural_finish_rate')}",
+        f"- Deadline finish rate: {metric('deadline_finish_rate')}",
         f"- Empty prediction rate: {metric('empty_prediction_rate')}",
+        f"- Episodes with suppressed duplicates: "
+        f"{metric('duplicate_action_episode_rate')}",
         f"- Mean total reward: {metric('mean_total_reward')}",
         f"- Question rate: {metric('question_rate')}",
         f"- Mean disclosure level: "
@@ -196,25 +244,42 @@ def render_markdown_summary(
         "",
         "## Episodes",
         "",
-        "| # | Instance | Preference | Turns | Questions | F1 | Reward | Status |",
-        "|---:|---|---|---:|---:|---:|---:|---|",
+        "| # | Instance | Preference | Turns | Dupes | Questions | F1 | "
+        "Reward | Termination |",
+        "|---:|---|---|---:|---:|---:|---:|---:|---|",
     ]
     for position, item in enumerate(records, start=1):
         episode = item["episode"]
         if item["status"] == "completed":
             report = item["report"]
             reward = report["reward"]
+            termination = report.get("termination") or (
+                "natural_finish"
+                if report["trajectory"]
+                and report["trajectory"][-1].get("action", {}).get("tool")
+                == "finish"
+                else "turn_limit"
+            )
+            duplicates = int(
+                report.get(
+                    "duplicate_actions_suppressed",
+                    sum(
+                        bool(step.get("duplicate_suppressed"))
+                        for step in report["trajectory"]
+                    ),
+                )
+            )
             lines.append(
                 f"| {position} | `{episode['instance_id']}` | "
                 f"`{episode['preference']}` | {len(report['trajectory'])} | "
-                f"{reward['questions_asked']} | "
+                f"{duplicates} | {reward['questions_asked']} | "
                 f"{float(reward['productivity']):.3f} | "
-                f"{float(reward['total']):.3f} | completed |"
+                f"{float(reward['total']):.3f} | `{termination}` |"
             )
         else:
             lines.append(
                 f"| {position} | `{episode['instance_id']}` | "
-                f"`{episode['preference']}` | — | — | — | — | "
+                f"`{episode['preference']}` | — | — | — | — | — | "
                 f"failed: {item['error_type']} |"
             )
     lines.append("")

@@ -126,6 +126,18 @@ Each episode is saved immediately. Repeating the command resumes completed
 episodes, so an interrupted repository download or provider error does not
 discard earlier results. Use `--no-resume` to rerun every selected episode.
 
+The live runner manages the turn budget explicitly:
+
+- Every request tells the agent its current turn and remaining budget.
+- Exact repeated tool calls are suppressed and returned with a corrective
+  observation.
+- The penultimate turn is labeled as the last chance to gather evidence.
+- The final turn uses a finish-only structured-output schema so the agent
+  records its best-supported localization instead of silently timing out.
+
+Reports distinguish `natural_finish`, `deadline_finish`, and `turn_limit`, and
+record how many duplicate actions were suppressed.
+
 The output directory contains:
 
 - `manifest.json`: model, sampling, and episode configuration.
@@ -133,10 +145,11 @@ The output directory contains:
 - `summary.json`: aggregate metrics for analysis.
 - `summary.md`: a compact, human-readable baseline report.
 
-The primary metrics are exact localization rate, mean function F1, agent finish
-rate, empty prediction rate, question rate, disclosure level, preference
-compliance, turns, latency, and total reward. Increase the sample only after
-inspecting the four-episode report.
+The primary metrics are exact localization rate, mean function F1, natural and
+deadline finish rates, empty prediction rate, suppressed duplicate actions,
+question rate, disclosure level, preference compliance, turns, latency, and
+total reward. Increase the sample only after inspecting the four-episode
+report.
 
 ## Expected cost
 

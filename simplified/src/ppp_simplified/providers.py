@@ -29,32 +29,36 @@ Tool arguments:
 - finish: {"functions": ["path/file.py:QualifiedName"]}
 """
 
-ACTION_RESPONSE_FORMAT = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "ppp_agent_action",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "tool": {
-                    "type": "string",
-                    "enum": [
-                        "list_files",
-                        "search_code",
-                        "read_file",
-                        "ask_user",
-                        "finish",
-                    ],
+TOOL_NAMES = (
+    "list_files",
+    "search_code",
+    "read_file",
+    "ask_user",
+    "finish",
+)
+
+
+def action_response_format(allowed_tools: Sequence[str]) -> dict[str, Any]:
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "ppp_agent_action",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "tool": {
+                        "type": "string",
+                        "enum": list(allowed_tools),
+                    },
+                    "arguments": {"type": "object"},
+                    "reasoning": {"type": "string"},
                 },
-                "arguments": {"type": "object"},
-                "reasoning": {"type": "string"},
+                "required": ["tool", "arguments", "reasoning"],
+                "additionalProperties": False,
             },
-            "required": ["tool", "arguments", "reasoning"],
-            "additionalProperties": False,
         },
-    },
-}
+    }
 
 
 def parse_json_object(text: str) -> dict[str, Any]:
@@ -87,6 +91,7 @@ class AgentProvider(ABC):
         *,
         system_prompt: str,
         messages: Sequence[dict[str, str]],
+        allowed_tools: Sequence[str] | None = None,
     ) -> AgentAction:
         """Select the next repository or user action."""
 
@@ -120,7 +125,19 @@ class OpenAICompatibleAgent(AgentProvider):
         *,
         system_prompt: str,
         messages: Sequence[dict[str, str]],
+        allowed_tools: Sequence[str] | None = None,
     ) -> AgentAction:
+        selected_tools = tuple(allowed_tools or TOOL_NAMES)
+        unknown = set(selected_tools) - set(TOOL_NAMES)
+        if not selected_tools or unknown:
+            raise ValueError(f"Invalid allowed tools: {selected_tools}")
+        restriction = (
+            ""
+            if selected_tools == TOOL_NAMES
+            else "\n\nOnly these tools are permitted now: "
+            + ", ".join(selected_tools)
+            + "."
+        )
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -133,13 +150,18 @@ class OpenAICompatibleAgent(AgentProvider):
                 "messages": [
                     {
                         "role": "system",
-                        "content": system_prompt + "\n\n" + ACTION_SCHEMA,
+                        "content": (
+                            system_prompt
+                            + restriction
+                            + "\n\n"
+                            + ACTION_SCHEMA
+                        ),
                     },
                     *messages,
                 ],
                 "temperature": 0.2,
                 "max_tokens": 900,
-                "response_format": ACTION_RESPONSE_FORMAT,
+                "response_format": action_response_format(selected_tools),
             },
         )
         response.raise_for_status()
@@ -149,6 +171,10 @@ class OpenAICompatibleAgent(AgentProvider):
         # reasoning_content even when the normal content field is empty.
         text = message.get("content") or message.get("reasoning_content") or ""
         payload = parse_json_object(text)
+        if payload.get("tool") not in selected_tools:
+            raise ValueError(
+                f"Model selected disallowed tool: {payload.get('tool')}"
+            )
         return AgentAction(
             tool=str(payload["tool"]),
             arguments=dict(payload.get("arguments") or {}),
@@ -170,8 +196,15 @@ class ScriptedSmokeAgent(AgentProvider):
         *,
         system_prompt: str,
         messages: Sequence[dict[str, str]],
+        allowed_tools: Sequence[str] | None = None,
     ) -> AgentAction:
         del system_prompt, messages
+        if allowed_tools is not None and tuple(allowed_tools) == ("finish",):
+            return AgentAction(
+                tool="finish",
+                arguments={"functions": list(self.expected_functions)},
+                reasoning="Return the fixture answer on the finalization turn.",
+            )
         self.turn += 1
         if self.turn == 1:
             return AgentAction(

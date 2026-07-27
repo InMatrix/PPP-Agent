@@ -64,6 +64,7 @@ class TrajectoryStep:
     turn: int
     action: AgentAction
     observation: str
+    duplicate_suppressed: bool = False
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,12 @@ class RunReport:
     reward: RewardBreakdown
     trajectory: tuple[TrajectoryStep, ...]
     workspace: str
+    termination: Literal[
+        "natural_finish",
+        "deadline_finish",
+        "turn_limit",
+    ] = "turn_limit"
+    duplicate_actions_suppressed: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
