@@ -42,6 +42,37 @@ DEFAULT_EVALUATION_PREFERENCES = (
 )
 
 
+def validate_policy_tool_schema(
+    policy_version: str,
+    tool_schema_version: str,
+) -> None:
+    expected = {
+        "navigation-v2": "v2",
+        "navigation-v3": "v3",
+    }[policy_version]
+    if tool_schema_version != expected:
+        raise ValueError(
+            f"{policy_version} requires tool schema {expected}, "
+            f"not {tool_schema_version}."
+        )
+
+
+def current_code_revision() -> str:
+    revision = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=normal"],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    return revision + ("+dirty" if dirty else "")
+
+
 def load_local_environment(path: Path = Path("simplified/.env")) -> None:
     """Load the ignored local env file without overwriting shell variables."""
 
@@ -130,6 +161,10 @@ def command_prepare(args: argparse.Namespace) -> int:
 
 
 def command_run(args: argparse.Namespace) -> int:
+    validate_policy_tool_schema(
+        args.policy_version,
+        args.tool_schema_version,
+    )
     episode = selected_episode(args)
     workspace_manager = RepositoryWorkspace(args.workspace_root)
     workspace = workspace_manager.prepare(episode)
@@ -141,12 +176,14 @@ def command_run(args: argparse.Namespace) -> int:
             model=args.qwen_model,
             base_url=args.qwen_base_url,
             seed=args.qwen_seed,
+            tool_schema_version=args.tool_schema_version,
         )
         simulator = GeminiUserSimulator(model=args.gemini_model)
     report = AgentRunner(
         provider=provider,
         simulator=simulator,
         max_turns=args.max_turns,
+        policy_version=args.policy_version,
     ).run(episode, workspace)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output = args.output or (
@@ -160,6 +197,10 @@ def command_run(args: argparse.Namespace) -> int:
 
 
 def command_evaluate(args: argparse.Namespace) -> int:
+    validate_policy_tool_schema(
+        args.policy_version,
+        args.tool_schema_version,
+    )
     suite_metadata = None
     sample_seed = args.sample_seed
     if args.suite:
@@ -179,6 +220,15 @@ def command_evaluate(args: argparse.Namespace) -> int:
                 "to preview metadata, or pass --confirm-heldout for a frozen "
                 "milestone evaluation. Do not inspect its trajectories while "
                 "tuning."
+            )
+        if (
+            suite.role == "heldout"
+            and not args.dry_run
+            and current_code_revision().endswith("+dirty")
+        ):
+            raise SystemExit(
+                "Sealed held-out evaluations require a clean committed Git "
+                "worktree. Commit the frozen candidate before running."
             )
     else:
         preferences = tuple(
@@ -213,6 +263,7 @@ def command_evaluate(args: argparse.Namespace) -> int:
             model=args.qwen_model,
             base_url=args.qwen_base_url,
             seed=inference_seed,
+            tool_schema_version=args.tool_schema_version,
         )
         simulator_factory = lambda episode: GeminiUserSimulator(
             model=args.gemini_model
@@ -227,13 +278,9 @@ def command_evaluate(args: argparse.Namespace) -> int:
         sample_seed=sample_seed,
         inference_seeds=inference_seeds,
         policy_label=args.policy_label,
+        policy_version=args.policy_version,
         tool_schema_version=args.tool_schema_version,
-        code_revision=subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            text=True,
-            capture_output=True,
-            check=True,
-        ).stdout.strip(),
+        code_revision=current_code_revision(),
         evaluation_suite=suite_metadata,
     )
     if args.dry_run:
@@ -246,6 +293,7 @@ def command_evaluate(args: argparse.Namespace) -> int:
         provider_factory=provider_factory,
         simulator_factory=simulator_factory,
         max_turns=args.max_turns,
+        policy_version=args.policy_version,
         resume=args.resume,
     ).run(episodes, inference_seeds, manifest)
     print(json.dumps(summary, indent=2))
@@ -328,6 +376,16 @@ def build_parser() -> argparse.ArgumentParser:
         default="gemini-3.5-flash-lite",
     )
     run.add_argument("--qwen-seed", type=int)
+    run.add_argument(
+        "--policy-version",
+        choices=("navigation-v2", "navigation-v3"),
+        default="navigation-v2",
+    )
+    run.add_argument(
+        "--tool-schema-version",
+        choices=("v2", "v3"),
+        default="v2",
+    )
 
     evaluate = subparsers.add_parser("evaluate")
     evaluate.add_argument(
@@ -374,7 +432,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Comma-separated LM Studio sampling seeds.",
     )
     evaluate.add_argument("--policy-label", default="navigation-v2")
-    evaluate.add_argument("--tool-schema-version", default="v2")
+    evaluate.add_argument(
+        "--policy-version",
+        choices=("navigation-v2", "navigation-v3"),
+        default="navigation-v2",
+        help="Select executable policy behavior, not just a report label.",
+    )
+    evaluate.add_argument(
+        "--tool-schema-version",
+        choices=("v2", "v3"),
+        default="v2",
+    )
     evaluate.add_argument(
         "--preferences",
         default=",".join(DEFAULT_EVALUATION_PREFERENCES),

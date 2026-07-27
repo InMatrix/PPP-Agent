@@ -129,6 +129,7 @@ def test_manifest_expands_episodes_across_inference_seeds() -> None:
         sample_seed=7,
         inference_seeds=(11, 22),
         policy_label="termination-v1",
+        policy_version="navigation-v2",
         tool_schema_version="v1",
         code_revision="abc123",
     )
@@ -136,6 +137,7 @@ def test_manifest_expands_episodes_across_inference_seeds() -> None:
     assert manifest["sample_seed"] == 7
     assert manifest["schema_version"] == 3
     assert manifest["inference_seeds"] == [11, 22]
+    assert manifest["policy_version"] == "navigation-v2"
     assert len(manifest["cases"]) == 4
     assert [case["inference_seed"] for case in manifest["cases"]] == [
         11,

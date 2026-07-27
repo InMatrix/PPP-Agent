@@ -14,7 +14,7 @@ import httpx
 from .models import AgentAction
 
 
-ACTION_SCHEMA = """Return exactly one JSON object:
+ACTION_SCHEMA_V2 = """Return exactly one JSON object:
 {
   "tool": "list_tree|find_symbol|search_code|read_file|ask_user|finish",
   "arguments": { ... },
@@ -30,7 +30,33 @@ Tool arguments:
 - finish: {"functions": ["path/file.py:QualifiedName"]}
 """
 
+ACTION_SCHEMA_V3 = """Return exactly one JSON object:
+{
+  "tool": "list_tree|find_symbol|inspect_symbol|search_code|read_file|ask_user|finish",
+  "arguments": { ... },
+  "reasoning": "one concise sentence"
+}
+
+Tool arguments:
+- list_tree: {"path": "", "max_depth": 2, "max_entries": 120}
+- find_symbol: {"name": "exact_name", "path": "", "kind": "any|class|function", "max_results": 50}
+- inspect_symbol: {"path": "relative/file.py", "name": "QualifiedName", "context_lines": 12}
+- search_code: {"query": "literal or regex", "path": "", "glob": "*.py"}
+- read_file: {"path": "relative/file.py", "start_line": 1, "end_line": 220}
+- ask_user: {"question": "one targeted, easy-to-answer question"}
+- finish: {"functions": ["path/file.py:QualifiedName"]}
+"""
+
 TOOL_NAMES = (
+    "list_tree",
+    "find_symbol",
+    "inspect_symbol",
+    "search_code",
+    "read_file",
+    "ask_user",
+    "finish",
+)
+TOOL_NAMES_V2 = (
     "list_tree",
     "find_symbol",
     "search_code",
@@ -108,6 +134,7 @@ class OpenAICompatibleAgent(AgentProvider):
         base_url: str = "http://localhost:8000/v1",
         api_key: str | None = None,
         seed: int | None = None,
+        tool_schema_version: str = "v2",
         timeout_seconds: float = 300,
         client: httpx.Client | None = None,
     ) -> None:
@@ -116,6 +143,19 @@ class OpenAICompatibleAgent(AgentProvider):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key or os.getenv("QWEN_API_KEY") or "EMPTY"
         self.seed = seed
+        if tool_schema_version not in {"v2", "v3"}:
+            raise ValueError(
+                f"Unsupported tool schema version: {tool_schema_version}"
+            )
+        self.tool_schema_version = tool_schema_version
+        self.default_tools = (
+            TOOL_NAMES if tool_schema_version == "v3" else TOOL_NAMES_V2
+        )
+        self.action_schema = (
+            ACTION_SCHEMA_V3
+            if tool_schema_version == "v3"
+            else ACTION_SCHEMA_V2
+        )
         self.timeout_seconds = timeout_seconds
         # LM Studio is a local service. Ignoring environment/system proxies keeps
         # localhost requests from being intercepted on proxy-configured Macs.
@@ -131,13 +171,13 @@ class OpenAICompatibleAgent(AgentProvider):
         messages: Sequence[dict[str, str]],
         allowed_tools: Sequence[str] | None = None,
     ) -> AgentAction:
-        selected_tools = tuple(allowed_tools or TOOL_NAMES)
-        unknown = set(selected_tools) - set(TOOL_NAMES)
+        selected_tools = tuple(allowed_tools or self.default_tools)
+        unknown = set(selected_tools) - set(self.default_tools)
         if not selected_tools or unknown:
             raise ValueError(f"Invalid allowed tools: {selected_tools}")
         restriction = (
             ""
-            if selected_tools == TOOL_NAMES
+            if selected_tools == self.default_tools
             else "\n\nOnly these tools are permitted now: "
             + ", ".join(selected_tools)
             + "."
@@ -155,7 +195,7 @@ class OpenAICompatibleAgent(AgentProvider):
                         system_prompt
                         + restriction
                         + "\n\n"
-                        + ACTION_SCHEMA
+                        + self.action_schema
                     ),
                 },
                 *messages,

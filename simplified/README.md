@@ -144,13 +144,16 @@ simplified/.venv/bin/ppp-simple evaluate \
   --max-turns 8 \
   --inference-seeds 11 \
   --policy-label navigation-v2 \
+  --policy-version navigation-v2 \
   --tool-schema-version v2 \
   --output-dir simplified/results/dev-navigation-v2
 ```
 
 Freeze and commit a candidate before using the held-out suite. Begin with one
 inference seed to control local-Qwen cost. Execution is blocked unless the
-milestone intent is acknowledged explicitly:
+milestone intent is acknowledged explicitly, and sealed runs reject a dirty
+Git worktree. Development manifests append `+dirty` to the revision when
+appropriate so provisional results cannot be mistaken for a frozen build:
 
 ```bash
 simplified/.venv/bin/ppp-simple evaluate \
@@ -160,6 +163,7 @@ simplified/.venv/bin/ppp-simple evaluate \
   --max-turns 8 \
   --inference-seeds 11 \
   --policy-label navigation-v3 \
+  --policy-version navigation-v3 \
   --tool-schema-version v3 \
   --output-dir simplified/results/heldout-navigation-v3-seed-11
 ```
@@ -194,6 +198,16 @@ The first exact duplicate proposal receives one retry without consuming another
 logical turn. Finish entries are checked against repository files and AST
 symbols; one invalid finish receives a correction attempt, and a still-invalid
 correction is retained for scoring but marked unverified in the report.
+
+Navigation v3 is an executable policy selected with
+`--policy-version navigation-v3`; `--policy-label` remains the human-readable
+experiment label. V3 adds `inspect_symbol`, which resolves a definition to its
+canonical qualified name and returns its complete source plus nearby sibling
+definitions. Its prompt asks the agent to trace supporting call/data paths
+before finalizing. An exact action signature receives at most one duplicate
+retry across the entire episode, preventing a stuck proposal from multiplying
+model calls on every logical turn. Navigation v2 remains selectable for matched
+control runs.
 
 `--sample-seed` controls which dataset rows are selected, while
 `--inference-seeds` controls LM Studio generation. Multiple inference seeds

@@ -226,3 +226,52 @@ def test_runner_preserves_unverified_correction_for_scoring(
     assert report.predicted_functions == (
         "pkg/widget.py:Widget.still_missing",
     )
+
+
+class PersistentlyRepeatingAgent:
+    name = "persistently-repeating-agent"
+
+    def next_action(
+        self,
+        *,
+        system_prompt,
+        messages,
+        allowed_tools=None,
+    ) -> AgentAction:
+        del system_prompt, messages
+        if allowed_tools == ("finish",):
+            return AgentAction(
+                tool="finish",
+                arguments={"functions": ["pkg/widget.py:Widget.run"]},
+            )
+        return AgentAction(
+            tool="search_code",
+            arguments={"query": "Widget", "path": "", "glob": "*.py"},
+        )
+
+
+def test_navigation_v3_retries_each_duplicate_signature_only_once(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg/widget.py").write_text(
+        "class Widget:\n"
+        "    def run(self):\n"
+        "        pass\n"
+    )
+
+    report = AgentRunner(
+        provider=PersistentlyRepeatingAgent(),
+        simulator=DeterministicUserSimulator(),
+        max_turns=4,
+        policy_version="navigation-v3",
+    ).run(episode(), tmp_path)
+
+    assert report.duplicate_actions_suppressed == 3
+    assert report.model_calls == 5
+    assert [
+        (step.turn, step.attempt)
+        for step in report.trajectory
+        if step.duplicate_suppressed
+    ] == [(2, 1), (2, 2), (3, 1)]
+    assert report.predicted_functions == ("pkg/widget.py:Widget.run",)

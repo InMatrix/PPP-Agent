@@ -36,6 +36,7 @@ IGNORED_DIRECTORY_NAMES = {
 class SymbolLocation:
     path: str
     line: int
+    end_line: int
     qualified_name: str
     kind: str
 
@@ -81,6 +82,13 @@ class PythonSymbolIndex:
                         SymbolLocation(
                             path=relative.as_posix(),
                             line=int(getattr(node, "lineno", 1)),
+                            end_line=int(
+                                getattr(
+                                    node,
+                                    "end_lineno",
+                                    getattr(node, "lineno", 1),
+                                )
+                            ),
                             qualified_name=qualified,
                             kind=kind,
                         )
@@ -147,6 +155,38 @@ class PythonSymbolIndex:
             for location in self.locations
         )
 
+    def resolve(
+        self,
+        path: str,
+        qualified_name: str,
+    ) -> SymbolLocation | None:
+        return next(
+            (
+                location
+                for location in self.locations
+                if location.path == path
+                and location.qualified_name == qualified_name
+            ),
+            None,
+        )
+
+    def siblings(
+        self,
+        location: SymbolLocation,
+        *,
+        max_results: int = 30,
+    ) -> tuple[SymbolLocation, ...]:
+        parent = location.qualified_name.rpartition(".")[0]
+        matches = [
+            candidate
+            for candidate in self.locations
+            if candidate.path == location.path
+            and candidate != location
+            and candidate.qualified_name.rpartition(".")[0] == parent
+        ]
+        matches.sort(key=lambda item: (abs(item.line - location.line), item.line))
+        return tuple(matches[: max(1, min(max_results, 50))])
+
 
 class ReadOnlyRepositoryTools:
     def __init__(
@@ -179,6 +219,12 @@ class ReadOnlyRepositoryTools:
                 str(arguments.get("path", "")),
                 str(arguments.get("kind", "any")),
                 int(arguments.get("max_results", 50)),
+            )
+        if action.tool == "inspect_symbol":
+            return self.inspect_symbol(
+                str(arguments.get("path", "")),
+                str(arguments.get("name", "")),
+                int(arguments.get("context_lines", 12)),
             )
         if action.tool == "search_code":
             return self.search_code(
@@ -304,6 +350,58 @@ class ReadOnlyRepositoryTools:
         return "\n".join(
             f"{item.path}:{item.line}:{item.qualified_name} [{item.kind}]"
             for item in matches
+        )
+
+    def inspect_symbol(
+        self,
+        relative: str,
+        name: str,
+        context_lines: int,
+    ) -> str:
+        if not relative or not name.strip():
+            raise ToolError("inspect_symbol requires path and name.")
+        target = self._safe_path(relative)
+        if not target.is_file() or target.suffix != ".py":
+            raise ToolError(f"Not a Python file: {relative}")
+        normalized = target.relative_to(self.root).as_posix()
+        requested = name.strip()
+        location = self.symbols.resolve(normalized, requested)
+        if location is None:
+            matches = self.symbols.find(
+                name=requested,
+                path_prefix=normalized,
+                max_results=20,
+            )
+            if len(matches) == 1:
+                location = matches[0]
+            elif matches:
+                choices = ", ".join(item.qualified_name for item in matches)
+                raise ToolError(
+                    f"Ambiguous symbol {requested!r}; use one of: {choices}"
+                )
+            else:
+                raise ToolError(
+                    f"Symbol {requested!r} is not defined in {normalized}."
+                )
+
+        context = max(0, min(context_lines, 40))
+        start = max(1, location.line - context)
+        end = location.end_line + context
+        siblings = self.symbols.siblings(location)
+        sibling_lines = (
+            "\n".join(
+                f"- {item.path}:{item.line}:{item.qualified_name} [{item.kind}]"
+                for item in siblings
+            )
+            if siblings
+            else "(none)"
+        )
+        return (
+            f"SYMBOL\n{location.path}:{location.line}-"
+            f"{location.end_line}:{location.qualified_name} "
+            f"[{location.kind}]\n\n"
+            f"NEARBY SIBLINGS\n{sibling_lines}\n\n"
+            f"SOURCE\n{self.read_file(normalized, start, end)}"
         )
 
     @staticmethod

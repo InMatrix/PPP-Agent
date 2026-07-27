@@ -80,6 +80,7 @@ def build_manifest(
     sample_seed: int,
     inference_seeds: Sequence[int | None],
     policy_label: str,
+    policy_version: str,
     tool_schema_version: str,
     code_revision: str,
     evaluation_suite: dict[str, Any] | None = None,
@@ -110,6 +111,7 @@ def build_manifest(
         "sample_seed": sample_seed,
         "inference_seeds": list(inference_seeds),
         "policy_label": policy_label,
+        "policy_version": policy_version,
         "tool_schema_version": tool_schema_version,
         "code_revision": code_revision,
         "episodes": [
@@ -618,6 +620,7 @@ class BatchEvaluator:
         provider_factory: ProviderFactory,
         simulator_factory: SimulatorFactory,
         max_turns: int,
+        policy_version: str = "navigation-v2",
         resume: bool = True,
         progress: ProgressCallback = print,
     ) -> None:
@@ -626,6 +629,7 @@ class BatchEvaluator:
         self.provider_factory = provider_factory
         self.simulator_factory = simulator_factory
         self.max_turns = max_turns
+        self.policy_version = policy_version
         self.resume = resume
         self.progress = progress
 
@@ -687,6 +691,7 @@ class BatchEvaluator:
                     provider=self.provider_factory(episode, inference_seed),
                     simulator=self.simulator_factory(episode),
                     max_turns=self.max_turns,
+                    policy_version=self.policy_version,
                 ).run(episode, workspace)
                 record = {
                     "status": "completed",

@@ -12,7 +12,7 @@ from .simulator import UserSimulator
 from .tools import ReadOnlyRepositoryTools
 
 
-SYSTEM_PROMPT = """You are solving a read-only function-localization task.
+SYSTEM_PROMPT_V2 = """You are solving a read-only function-localization task.
 Identify every existing function that must be modified to address the issue.
 Inspect the pinned repository with the provided tools. Ask the user only when
 their answer could change your localization decision and keep the question easy
@@ -27,6 +27,31 @@ Finish with one entry per function:
 path/to/file.py:QualifiedName
 """
 
+SYSTEM_PROMPT_V3 = """You are solving a read-only function-localization task.
+Identify every existing function that must be modified to address the issue.
+Inspect the pinned repository with the provided tools. Ask the user only when
+their answer could change your localization decision and keep the question easy
+to answer. Never propose edits.
+
+Use list_tree for package structure and find_symbol for named definitions. Use
+inspect_symbol after finding a candidate: it returns the exact qualified name,
+the complete definition, and nearby sibling definitions. Use search_code for
+concepts not represented by symbol names. Do not repeat an identical tool call.
+
+Trace the relevant data and calls beyond the function where the symptom appears.
+Before finishing, distinguish the direct entry point from supporting functions
+whose implementations must also change. Include every supported modification
+target, but do not add functions merely because they are nearby.
+
+Finish with one entry per function:
+path/to/file.py:QualifiedName
+"""
+
+POLICIES = {
+    "navigation-v2": SYSTEM_PROMPT_V2,
+    "navigation-v3": SYSTEM_PROMPT_V3,
+}
+
 
 class AgentRunner:
     def __init__(
@@ -35,12 +60,16 @@ class AgentRunner:
         provider: AgentProvider,
         simulator: UserSimulator,
         max_turns: int = 16,
+        policy_version: str = "navigation-v2",
     ) -> None:
         self.provider = provider
         self.simulator = simulator
         if max_turns < 1:
             raise ValueError("max_turns must be at least 1.")
+        if policy_version not in POLICIES:
+            raise ValueError(f"Unsupported policy version: {policy_version}")
         self.max_turns = max_turns
+        self.policy_version = policy_version
 
     def run(self, episode: Episode, workspace: Path) -> RunReport:
         question_number = 0
@@ -66,12 +95,14 @@ class AgentRunner:
         ]
         trajectory: list[TrajectoryStep] = []
         observations_by_action: dict[str, str] = {}
+        retried_duplicate_signatures: set[str] = set()
         duplicate_actions_suppressed = 0
         model_calls = 0
         termination = "turn_limit"
         finish_validation_passed: bool | None = None
         finish_correction_attempted = False
         invalid_predictions: tuple[str, ...] = ()
+        system_prompt = POLICIES[self.policy_version]
 
         def record_step(
             *,
@@ -110,7 +141,7 @@ class AgentRunner:
             remaining = self.max_turns - turn
             final_turn = remaining == 0
             budget_prompt = (
-                f"{SYSTEM_PROMPT}\n"
+                f"{system_prompt}\n"
                 f"TURN BUDGET: This is turn {turn} of {self.max_turns}; "
                 f"{remaining} turn(s) remain after this action.\n"
             )
@@ -166,7 +197,14 @@ class AgentRunner:
                         duplicate_suppressed=True,
                         executed=False,
                     )
-                    if duplicate_retry_available:
+                    can_retry_duplicate = duplicate_retry_available
+                    if self.policy_version == "navigation-v3":
+                        can_retry_duplicate = (
+                            not final_turn
+                            and signature not in retried_duplicate_signatures
+                        )
+                    if can_retry_duplicate:
+                        retried_duplicate_signatures.add(signature)
                         duplicate_retry_available = False
                         attempt += 1
                         continue

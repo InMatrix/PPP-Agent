@@ -23,6 +23,11 @@ def test_openai_compatible_qwen_adapter() -> None:
         payload = __import__("json").loads(request.content)
         assert payload["model"] == "Qwen/Qwen3.5-4B"
         assert "Return exactly one JSON object" in payload["messages"][0]["content"]
+        assert "inspect_symbol" not in payload["messages"][0]["content"]
+        tool_schema = payload["response_format"]["json_schema"]["schema"][
+            "properties"
+        ]["tool"]
+        assert "inspect_symbol" not in tool_schema["enum"]
         return httpx.Response(
             200,
             json={
@@ -47,6 +52,43 @@ def test_openai_compatible_qwen_adapter() -> None:
         messages=[{"role": "user", "content": "issue"}],
     )
     assert action.tool == "list_tree"
+
+
+def test_openai_compatible_qwen_selects_navigation_v3_schema() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = __import__("json").loads(request.content)
+        assert "inspect_symbol" in payload["messages"][0]["content"]
+        tool_schema = payload["response_format"]["json_schema"]["schema"][
+            "properties"
+        ]["tool"]
+        assert "inspect_symbol" in tool_schema["enum"]
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"tool":"inspect_symbol",'
+                                '"arguments":{"path":"pkg.py","name":"run"},'
+                                '"reasoning":"inspect exact definition"}'
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    action = OpenAICompatibleAgent(
+        client=client,
+        tool_schema_version="v3",
+    ).next_action(
+        system_prompt="system",
+        messages=[{"role": "user", "content": "issue"}],
+    )
+
+    assert action.tool == "inspect_symbol"
 
 
 def test_openai_compatible_qwen_uses_reasoning_content_fallback() -> None:

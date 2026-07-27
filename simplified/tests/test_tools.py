@@ -100,6 +100,47 @@ def test_find_symbol_respects_result_cap(tmp_path: Path) -> None:
     assert len(result.splitlines()) == 2
 
 
+def test_inspect_symbol_returns_canonical_name_source_and_siblings(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "pkg.py").write_text(
+        "class Widget:\n"
+        "    def before(self):\n"
+        "        return 1\n\n"
+        "    def run(self, value):\n"
+        "        changed = value + 1\n"
+        "        return changed\n\n"
+        "    def after(self):\n"
+        "        return 2\n"
+    )
+    repository_tools = tools(tmp_path)
+
+    result = repository_tools.inspect_symbol(
+        "pkg.py",
+        "run",
+        context_lines=0,
+    )
+
+    assert "pkg.py:5-7:Widget.run [function]" in result
+    assert "pkg.py:2:Widget.before [function]" in result
+    assert "pkg.py:9:Widget.after [function]" in result
+    assert "changed = value + 1" in result
+
+
+def test_inspect_symbol_rejects_ambiguous_bare_names(tmp_path: Path) -> None:
+    (tmp_path / "pkg.py").write_text(
+        "class One:\n"
+        "    def run(self):\n"
+        "        pass\n\n"
+        "class Two:\n"
+        "    def run(self):\n"
+        "        pass\n"
+    )
+
+    with pytest.raises(ToolError, match="Ambiguous symbol"):
+        tools(tmp_path).inspect_symbol("pkg.py", "run", context_lines=0)
+
+
 def test_finish_validation_checks_file_and_qualified_symbol(
     tmp_path: Path,
 ) -> None:
