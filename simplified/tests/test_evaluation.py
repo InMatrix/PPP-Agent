@@ -7,6 +7,7 @@ from ppp_simplified.evaluation import (
     build_manifest,
     compare_summaries,
     summarize_records,
+    validate_comparable_manifests,
 )
 from ppp_simplified.models import Episode, Preference
 
@@ -133,6 +134,7 @@ def test_manifest_expands_episodes_across_inference_seeds() -> None:
     )
 
     assert manifest["sample_seed"] == 7
+    assert manifest["schema_version"] == 3
     assert manifest["inference_seeds"] == [11, 22]
     assert len(manifest["cases"]) == 4
     assert [case["inference_seed"] for case in manifest["cases"]] == [
@@ -221,3 +223,57 @@ def test_comparison_recommends_larger_model_below_f1_threshold() -> None:
 
     assert comparison["decision"]["f1_gain_met"] is False
     assert comparison["decision"]["recommendation"] == "compare_larger_model"
+
+
+def test_comparison_requires_identical_frozen_suite_cases() -> None:
+    suite = {
+        "name": "heldout-v1",
+        "role": "heldout",
+        "source_path": "data/test_ood.parquet",
+        "source_sha256": "abc123",
+    }
+    control = {
+        "evaluation_suite": suite,
+        "cases": [
+            {
+                "row_index": 10,
+                "instance_id": "task-1",
+                "preference": "json",
+                "inference_seed": 11,
+            }
+        ],
+    }
+    candidate = {
+        "evaluation_suite": dict(suite),
+        "cases": [dict(control["cases"][0])],
+    }
+
+    assert validate_comparable_manifests(control, candidate) == suite
+
+    candidate["cases"][0]["inference_seed"] = 22
+    with pytest.raises(ValueError, match="different evaluation cases"):
+        validate_comparable_manifests(control, candidate)
+
+
+def test_comparison_rejects_cross_suite_results() -> None:
+    control = {
+        "evaluation_suite": {
+            "name": "dev-v1",
+            "role": "development",
+            "source_path": "data/test_id.parquet",
+            "source_sha256": "one",
+        },
+        "cases": [],
+    }
+    candidate = {
+        "evaluation_suite": {
+            "name": "heldout-v1",
+            "role": "heldout",
+            "source_path": "data/test_ood.parquet",
+            "source_sha256": "two",
+        },
+        "cases": [],
+    }
+
+    with pytest.raises(ValueError, match="different evaluation suites"):
+        validate_comparable_manifests(control, candidate)

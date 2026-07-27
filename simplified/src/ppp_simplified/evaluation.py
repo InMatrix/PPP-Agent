@@ -82,6 +82,7 @@ def build_manifest(
     policy_label: str,
     tool_schema_version: str,
     code_revision: str,
+    evaluation_suite: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     cases = [
         {
@@ -100,8 +101,8 @@ def build_manifest(
             start=1,
         )
     ]
-    return {
-        "schema_version": 2,
+    manifest = {
+        "schema_version": 3,
         "mode": mode,
         "model": model,
         "simulator": simulator,
@@ -124,6 +125,9 @@ def build_manifest(
         ],
         "cases": cases,
     }
+    if evaluation_suite is not None:
+        manifest["evaluation_suite"] = evaluation_suite
+    return manifest
 
 
 def summarize_records(
@@ -378,12 +382,38 @@ def render_markdown_summary(
         f"- Preference compliance when judged: "
         f"{metric('preference_compliance_rate_when_judged')}",
         "",
-        "## Episodes",
-        "",
-        "| # | Seed | Instance | Preference | Turns | Calls | Dupes | "
-        "Questions | F1 | Reward | Termination |",
-        "|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---|",
     ]
+    suite = manifest.get("evaluation_suite")
+    if suite:
+        lines.extend(
+            [
+                "## Evaluation suite",
+                "",
+                f"- Name: `{suite['name']}`",
+                f"- Role: `{suite['role']}`",
+                f"- Sealed: `{suite['sealed']}`",
+                f"- Trajectory policy: {suite['trajectory_policy']}",
+                "",
+            ]
+        )
+        if suite["role"] == "heldout":
+            lines.extend(
+                [
+                    "> Held-out result: use aggregate metrics for model "
+                    "selection. Inspecting individual trajectories turns those "
+                    "tasks into development data.",
+                    "",
+                ]
+            )
+    lines.extend(
+        [
+            "## Episodes",
+            "",
+            "| # | Seed | Instance | Preference | Turns | Calls | Dupes | "
+            "Questions | F1 | Reward | Termination |",
+            "|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---|",
+        ]
+    )
     for position, item in enumerate(records, start=1):
         episode = item["episode"]
         if item["status"] == "completed":
@@ -480,13 +510,75 @@ def compare_summaries(
     }
 
 
+def validate_comparable_manifests(
+    control: dict[str, Any],
+    candidate: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Reject comparisons that cross suite or episode boundaries."""
+
+    control_suite = control.get("evaluation_suite")
+    candidate_suite = candidate.get("evaluation_suite")
+    if (control_suite is None) != (candidate_suite is None):
+        raise ValueError(
+            "Cannot compare a named evaluation suite with an ad-hoc sample."
+        )
+    if control_suite is not None:
+        identity_fields = ("name", "role", "source_path", "source_sha256")
+        control_identity = {
+            field: control_suite.get(field) for field in identity_fields
+        }
+        candidate_identity = {
+            field: candidate_suite.get(field) for field in identity_fields
+        }
+        if control_identity != candidate_identity:
+            raise ValueError(
+                "Control and candidate use different evaluation suites."
+            )
+
+    def case_identity(manifest: dict[str, Any]) -> list[tuple[Any, ...]]:
+        return [
+            (
+                item.get("row_index"),
+                item.get("instance_id"),
+                item.get("preference"),
+                item.get("inference_seed"),
+            )
+            for item in manifest.get("cases", ())
+        ]
+
+    if case_identity(control) != case_identity(candidate):
+        raise ValueError(
+            "Control and candidate manifests contain different evaluation "
+            "cases or inference seeds."
+        )
+    return control_suite
+
+
 def render_markdown_comparison(comparison: dict[str, Any]) -> str:
-    lines = [
-        "# Control vs candidate",
-        "",
-        "| Metric | Control | Candidate | Delta |",
-        "|---|---:|---:|---:|",
-    ]
+    lines = ["# Control vs candidate", ""]
+    suite = comparison.get("evaluation_suite")
+    if suite:
+        lines.extend(
+            [
+                f"- Evaluation suite: `{suite['name']}`",
+                f"- Evaluation role: `{suite['role']}`",
+                "",
+            ]
+        )
+        if suite["role"] == "heldout":
+            lines.extend(
+                [
+                    "> Frozen held-out comparison. Use the aggregate decision; "
+                    "do not tune against individual episode trajectories.",
+                    "",
+                ]
+            )
+    lines.extend(
+        [
+            "| Metric | Control | Candidate | Delta |",
+            "|---|---:|---:|---:|",
+        ]
+    )
     for name, values in comparison["metrics"].items():
         rendered = [
             "n/a" if values[key] is None else f"{values[key]:.3f}"

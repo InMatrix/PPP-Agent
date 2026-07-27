@@ -11,12 +11,17 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
-from .data import load_episode, select_evaluation_sample
+from .data import (
+    load_episode,
+    load_evaluation_suite,
+    select_evaluation_sample,
+)
 from .evaluation import (
     BatchEvaluator,
     build_manifest,
     compare_summaries,
     render_markdown_comparison,
+    validate_comparable_manifests,
 )
 from .providers import (
     OpenAICompatibleAgent,
@@ -155,17 +160,40 @@ def command_run(args: argparse.Namespace) -> int:
 
 
 def command_evaluate(args: argparse.Namespace) -> int:
-    preferences = tuple(
-        item.strip() for item in args.preferences.split(",") if item.strip()
-    )
-    episodes = select_evaluation_sample(
-        args.data,
-        sample_size=args.sample_size,
-        preferences=preferences,
-        seed=args.sample_seed,
-        anchor_instance=args.anchor_instance or None,
-        anchor_preference=args.anchor_preference or None,
-    )
+    suite_metadata = None
+    sample_seed = args.sample_seed
+    if args.suite:
+        suite, episodes = load_evaluation_suite(
+            args.suite_catalog,
+            args.suite,
+        )
+        suite_metadata = suite.manifest_metadata()
+        sample_seed = suite.selection_seed
+        if (
+            suite.role == "heldout"
+            and not args.dry_run
+            and not args.confirm_heldout
+        ):
+            raise SystemExit(
+                f"{suite.name!r} is a sealed held-out suite. Run --dry-run "
+                "to preview metadata, or pass --confirm-heldout for a frozen "
+                "milestone evaluation. Do not inspect its trajectories while "
+                "tuning."
+            )
+    else:
+        preferences = tuple(
+            item.strip()
+            for item in args.preferences.split(",")
+            if item.strip()
+        )
+        episodes = select_evaluation_sample(
+            args.data,
+            sample_size=args.sample_size,
+            preferences=preferences,
+            seed=sample_seed,
+            anchor_instance=args.anchor_instance or None,
+            anchor_preference=args.anchor_preference or None,
+        )
     inference_seeds = tuple(
         int(item.strip())
         for item in args.inference_seeds.split(",")
@@ -196,7 +224,7 @@ def command_evaluate(args: argparse.Namespace) -> int:
         model=model_name,
         simulator=simulator_name,
         max_turns=args.max_turns,
-        sample_seed=args.sample_seed,
+        sample_seed=sample_seed,
         inference_seeds=inference_seeds,
         policy_label=args.policy_label,
         tool_schema_version=args.tool_schema_version,
@@ -206,6 +234,7 @@ def command_evaluate(args: argparse.Namespace) -> int:
             capture_output=True,
             check=True,
         ).stdout.strip(),
+        evaluation_suite=suite_metadata,
     )
     if args.dry_run:
         print(json.dumps(manifest, indent=2))
@@ -225,9 +254,21 @@ def command_evaluate(args: argparse.Namespace) -> int:
 
 
 def command_compare(args: argparse.Namespace) -> int:
+    control_manifest = json.loads(
+        (args.control_dir / "manifest.json").read_text()
+    )
+    candidate_manifest = json.loads(
+        (args.candidate_dir / "manifest.json").read_text()
+    )
+    evaluation_suite = validate_comparable_manifests(
+        control_manifest,
+        candidate_manifest,
+    )
     control = json.loads((args.control_dir / "summary.json").read_text())
     candidate = json.loads((args.candidate_dir / "summary.json").read_text())
     comparison = compare_summaries(control, candidate)
+    if evaluation_suite is not None:
+        comparison["evaluation_suite"] = evaluation_suite
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "comparison.json").write_text(
         json.dumps(comparison, indent=2) + "\n"
@@ -293,6 +334,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--data",
         type=Path,
         default=Path("data/test_id.parquet"),
+    )
+    evaluate.add_argument(
+        "--suite",
+        help="Named frozen selection from --suite-catalog.",
+    )
+    evaluate.add_argument(
+        "--suite-catalog",
+        type=Path,
+        default=Path("simplified/evaluation_suites.json"),
+    )
+    evaluate.add_argument(
+        "--confirm-heldout",
+        action="store_true",
+        help="Acknowledge a sealed held-out milestone run.",
     )
     evaluate.add_argument(
         "--workspace-root",

@@ -98,32 +98,75 @@ simplified/.venv/bin/ppp-simple run --mode live --max-turns 12
 
 Results are written below `simplified/results/`, which is ignored by Git.
 
-## Evaluate a small live baseline
+## Evaluation protocol
 
-Preview the deterministic, stratified sample before making any model calls:
+The tracked `evaluation_suites.json` separates model development from final
+measurement:
+
+- `dev-v1` contains the four previously inspected `test_id` tasks. Use it for
+  prompt, tool, and policy iteration; its trajectories are development data.
+- `heldout-v1` freezes twelve unseen task instances from `test_ood`, covering
+  eleven repositories and all eight available OOD preference conditions. Use
+  it only for milestone comparisons after an implementation is frozen.
+
+Each suite records the parquet SHA-256, row metadata, selection seed, role, and
+trajectory policy. Loading verifies the dataset checksum and every frozen
+row's instance, repository, and preference. The held-out suite explicitly
+excludes all four development task IDs.
+
+If you inspect an individual held-out issue, expected answer, or trajectory to
+guide a change, that task is contaminated: add it to a future development
+suite and replace it before the next held-out comparison. Aggregate held-out
+metrics may be used for the predeclared model-selection decision.
+
+Preview either suite without making model calls:
 
 ```bash
 simplified/.venv/bin/ppp-simple evaluate \
+  --suite dev-v1 \
   --mode live \
-  --sample-size 4 \
-  --max-turns 8 \
+  --inference-seeds 11 \
+  --dry-run
+
+simplified/.venv/bin/ppp-simple evaluate \
+  --suite heldout-v1 \
+  --mode live \
+  --inference-seeds 11 \
   --dry-run
 ```
 
-The default sample uses distinct tasks and repositories across
-`concise_question`, `detail_question`, `no_ask`, and `one_question`. It keeps
-the known Flask task as the first sanity check. Run the batch with:
+Run the inexpensive development suite while iterating:
 
 ```bash
 simplified/.venv/bin/ppp-simple evaluate \
+  --suite dev-v1 \
   --mode live \
-  --sample-size 4 \
   --max-turns 8 \
-  --inference-seeds 11,22,33 \
-  --policy-label termination-v1 \
-  --tool-schema-version v1 \
-  --output-dir simplified/results/baseline-live-4
+  --inference-seeds 11 \
+  --policy-label navigation-v2 \
+  --tool-schema-version v2 \
+  --output-dir simplified/results/dev-navigation-v2
 ```
+
+Freeze and commit a candidate before using the held-out suite. Begin with one
+inference seed to control local-Qwen cost. Execution is blocked unless the
+milestone intent is acknowledged explicitly:
+
+```bash
+simplified/.venv/bin/ppp-simple evaluate \
+  --suite heldout-v1 \
+  --confirm-heldout \
+  --mode live \
+  --max-turns 8 \
+  --inference-seeds 11 \
+  --policy-label navigation-v3 \
+  --tool-schema-version v3 \
+  --output-dir simplified/results/heldout-navigation-v3-seed-11
+```
+
+Ad-hoc sampling remains available by omitting `--suite` and using `--data`,
+`--sample-size`, `--sample-seed`, and `--preferences`. Ad-hoc results must not
+be labeled as held-out evidence.
 
 Each episode is saved immediately. Repeating the command resumes completed
 episodes, so an interrupted repository download or provider error does not
@@ -175,11 +218,14 @@ simplified/.venv/bin/ppp-simple compare \
   --output-dir simplified/results/control-vs-navigation-v2
 ```
 
+Comparison checks the manifests before reading the metrics. Named suites,
+dataset hashes, frozen cases, preferences, and inference seeds must match, so a
+development run cannot accidentally be compared with a held-out run.
+
 The primary metrics are exact localization rate, mean function F1, natural and
 deadline finish rates, empty prediction rate, suppressed duplicate actions,
 question rate, disclosure level, preference compliance, turns, latency, and
-total reward. Increase the sample only after inspecting the four-episode
-report.
+total reward. Inspect individual trajectories only for development suites.
 
 ## Expected cost
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import random
 import re
@@ -22,6 +23,143 @@ class EpisodeReference:
     instance_id: str
     repository: str
     preference_name: str
+
+
+@dataclass(frozen=True)
+class EvaluationSuite:
+    """Frozen evaluation selection with its dataset identity and intended role."""
+
+    name: str
+    role: str
+    sealed: bool
+    source_path: str
+    source_sha256: str
+    selection_seed: int
+    trajectory_policy: str
+    references: tuple[EpisodeReference, ...]
+
+    def manifest_metadata(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "role": self.role,
+            "sealed": self.sealed,
+            "source_path": self.source_path,
+            "source_sha256": self.source_sha256,
+            "selection_seed": self.selection_seed,
+            "trajectory_policy": self.trajectory_policy,
+        }
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def load_evaluation_suite(
+    catalog_path: Path,
+    name: str,
+    *,
+    project_root: Path = Path("."),
+) -> tuple[EvaluationSuite, tuple[Episode, ...]]:
+    """Load and verify a named frozen suite without selecting new rows."""
+
+    catalog = json.loads(catalog_path.read_text())
+    if catalog.get("schema_version") != 1:
+        raise ValueError("Unsupported evaluation suite catalog schema.")
+    try:
+        payload = catalog["suites"][name]
+    except KeyError as error:
+        available = ", ".join(sorted(catalog.get("suites", {})))
+        raise LookupError(
+            f"Unknown evaluation suite {name!r}. Available: {available}"
+        ) from error
+
+    source_path = str(payload["data"])
+    dataset = (project_root / source_path).resolve()
+    if not dataset.is_file():
+        raise FileNotFoundError(f"Evaluation dataset not found: {dataset}")
+    expected_digest = str(payload["data_sha256"])
+    actual_digest = _sha256(dataset)
+    if actual_digest != expected_digest:
+        raise ValueError(
+            f"Dataset checksum mismatch for suite {name!r}: "
+            f"expected {expected_digest}, got {actual_digest}."
+        )
+
+    role = str(payload["role"])
+    sealed = bool(payload.get("sealed", False))
+    if role not in {"development", "heldout"}:
+        raise ValueError(f"Suite {name!r} has unsupported role {role!r}.")
+    if role == "heldout" and not sealed:
+        raise ValueError(f"Held-out suite {name!r} must be sealed.")
+
+    references = tuple(
+        EpisodeReference(
+            row_index=int(item["row_index"]),
+            instance_id=str(item["instance_id"]),
+            repository=str(item["repository"]),
+            preference_name=str(item["preference"]),
+        )
+        for item in payload["episodes"]
+    )
+    if len({item.row_index for item in references}) != len(references):
+        raise ValueError(f"Suite {name!r} contains duplicate dataset rows.")
+    if len({item.instance_id for item in references}) != len(references):
+        raise ValueError(f"Suite {name!r} contains duplicate task instances.")
+
+    development_instances = {
+        str(item["instance_id"])
+        for suite_payload in catalog["suites"].values()
+        if suite_payload.get("role") == "development"
+        for item in suite_payload.get("episodes", ())
+    }
+    excluded = set(payload.get("excluded_instance_ids", ()))
+    if role == "heldout":
+        excluded.update(development_instances)
+    contamination = excluded.intersection(
+        item.instance_id for item in references
+    )
+    if contamination:
+        raise ValueError(
+            f"Suite {name!r} includes excluded development tasks: "
+            + ", ".join(sorted(contamination))
+        )
+
+    episodes = tuple(
+        load_episode(dataset, row_index=reference.row_index)
+        for reference in references
+    )
+    for reference, episode in zip(references, episodes):
+        actual = (
+            episode.instance_id,
+            episode.repository,
+            episode.preference.name,
+        )
+        expected = (
+            reference.instance_id,
+            reference.repository,
+            reference.preference_name,
+        )
+        if actual != expected:
+            raise ValueError(
+                f"Suite {name!r} row {reference.row_index} metadata changed: "
+                f"expected {expected!r}, got {actual!r}."
+            )
+
+    suite = EvaluationSuite(
+        name=name,
+        role=role,
+        sealed=sealed,
+        source_path=source_path,
+        source_sha256=expected_digest,
+        selection_seed=int(payload["selection_seed"]),
+        trajectory_policy=str(payload["trajectory_policy"]),
+        references=references,
+    )
+    return suite, episodes
 
 
 def _ability_payload(ability: str) -> dict[str, Any]:

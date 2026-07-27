@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "suites": {
+    "dev-v1": {
+      "role": "development",
+      "sealed": false,
+      "data": "data/test_id.parquet",
+      "data_sha256": "56a37f87a9f73e4ed0edf696c4dc25d8c1403d372f2fb0267f5301cd0d126d6d",
+      "selection_seed": 7,
+      "trajectory_policy": "Inspect freely for debugging and regression analysis.",
+      "episodes": [
+        {
+          "row_index": 706,
+          "instance_id": "pallets__flask-5014",
+          "repository": "pallets/flask",
+          "preference": "concise_question"
+        },
+        {
+          "row_index": 954,
+          "instance_id": "django__django-11880",
+          "repository": "django/django",
+          "preference": "detail_question"
+        },
+        {
+          "row_index": 2523,
+          "instance_id": "pydata__xarray-6938",
+          "repository": "pydata/xarray",
+          "preference": "no_ask"
+        },
+        {
+          "row_index": 4852,
+          "instance_id": "sphinx-doc__sphinx-9230",
+          "repository": "sphinx-doc/sphinx",
+          "preference": "one_question"
+        }
+      ]
+    },
+    "heldout-v1": {
+      "role": "heldout",
+      "sealed": true,
+      "data": "data/test_ood.parquet",
+      "data_sha256": "8a71c2278151bf508593d4629b28bc864b3822087bdb1f85548b46685ba13d11",
+      "selection_seed": 20260727,
+      "trajectory_policy": "Use only for frozen milestone comparisons. Do not inspect per-episode trajectories while tuning; move any inspected task into a future development suite.",
+      "excluded_instance_ids": [
+        "pallets__flask-5014",
+        "django__django-11880",
+        "pydata__xarray-6938",
+        "sphinx-doc__sphinx-9230"
+      ],
+      "episodes": [
+        {
+          "row_index": 305,
+          "instance_id": "pytest-dev__pytest-7205",
+          "repository": "pytest-dev/pytest",
+          "preference": "lang_ita"
+        },
+        {
+          "row_index": 615,
+          "instance_id": "django__django-15380",
+          "repository": "django/django",
+          "preference": "lang_multi"
+        },
+        {
+          "row_index": 1276,
+          "instance_id": "sphinx-doc__sphinx-9658",
+          "repository": "sphinx-doc/sphinx",
+          "preference": "capital"
+        },
+        {
+          "row_index": 1606,
+          "instance_id": "psf__requests-1921",
+          "repository": "psf/requests",
+          "preference": "commas"
+        },
+        {
+          "row_index": 2073,
+          "instance_id": "pydata__xarray-6721",
+          "repository": "pydata/xarray",
+          "preference": "json"
+        },
+        {
+          "row_index": 2261,
+          "instance_id": "astropy__astropy-8872",
+          "repository": "astropy/astropy",
+          "preference": "joke"
+        },
+        {
+          "row_index": 3084,
+          "instance_id": "sympy__sympy-13798",
+          "repository": "sympy/sympy",
+          "preference": "snippet"
+        },
+        {
+          "row_index": 3476,
+          "instance_id": "scikit-learn__scikit-learn-26323",
+          "repository": "scikit-learn/scikit-learn",
+          "preference": "length"
+        },
+        {
+          "row_index": 243,
+          "instance_id": "matplotlib__matplotlib-24870",
+          "repository": "matplotlib/matplotlib",
+          "preference": "lang_ita"
+        },
+        {
+          "row_index": 740,
+          "instance_id": "pylint-dev__pylint-6528",
+          "repository": "pylint-dev/pylint",
+          "preference": "lang_multi"
+        },
+        {
+          "row_index": 1152,
+          "instance_id": "mwaskom__seaborn-3069",
+          "repository": "mwaskom/seaborn",
+          "preference": "capital"
+        },
+        {
+          "row_index": 1384,
+          "instance_id": "django__django-11299",
+          "repository": "django/django",
+          "preference": "commas"
+        }
+      ]
+    }
+  }
+}

@@ -1,9 +1,16 @@
+import hashlib
+import json
 from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
-from ppp_simplified.data import load_episode, select_evaluation_sample
+from ppp_simplified.data import (
+    load_episode,
+    load_evaluation_suite,
+    select_evaluation_sample,
+)
 
 
 def write_episode(path: Path) -> None:
@@ -100,3 +107,127 @@ def test_select_evaluation_sample_balances_preferences_and_repositories(
     assert [item.preference.name for item in episodes] == list(preferences)
     assert len({item.repository for item in episodes}) == 4
     assert episodes[0].instance_id == "anchor"
+
+
+def test_load_evaluation_suite_verifies_dataset_and_frozen_metadata(
+    tmp_path: Path,
+) -> None:
+    dataset = tmp_path / "episode.parquet"
+    write_episode(dataset)
+    digest = hashlib.sha256(dataset.read_bytes()).hexdigest()
+    catalog = tmp_path / "suites.json"
+    catalog.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "suites": {
+                    "heldout-test": {
+                        "role": "heldout",
+                        "sealed": True,
+                        "data": "episode.parquet",
+                        "data_sha256": digest,
+                        "selection_seed": 42,
+                        "trajectory_policy": "Do not inspect.",
+                        "excluded_instance_ids": ["development-task"],
+                        "episodes": [
+                            {
+                                "row_index": 0,
+                                "instance_id": "demo__repo-1",
+                                "repository": "demo/repo",
+                                "preference": "concise_question",
+                            }
+                        ],
+                    }
+                },
+            }
+        )
+    )
+
+    suite, episodes = load_evaluation_suite(
+        catalog,
+        "heldout-test",
+        project_root=tmp_path,
+    )
+
+    assert suite.role == "heldout"
+    assert suite.sealed is True
+    assert suite.selection_seed == 42
+    assert [episode.instance_id for episode in episodes] == ["demo__repo-1"]
+
+
+def test_load_evaluation_suite_rejects_dataset_drift(tmp_path: Path) -> None:
+    dataset = tmp_path / "episode.parquet"
+    write_episode(dataset)
+    catalog = tmp_path / "suites.json"
+    catalog.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "suites": {
+                    "dev-test": {
+                        "role": "development",
+                        "data": "episode.parquet",
+                        "data_sha256": "0" * 64,
+                        "selection_seed": 7,
+                        "trajectory_policy": "Inspect.",
+                        "episodes": [],
+                    }
+                },
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        load_evaluation_suite(
+            catalog,
+            "dev-test",
+            project_root=tmp_path,
+        )
+
+
+def test_heldout_suite_rejects_tasks_from_any_development_suite(
+    tmp_path: Path,
+) -> None:
+    dataset = tmp_path / "episode.parquet"
+    write_episode(dataset)
+    digest = hashlib.sha256(dataset.read_bytes()).hexdigest()
+    episode = {
+        "row_index": 0,
+        "instance_id": "demo__repo-1",
+        "repository": "demo/repo",
+        "preference": "concise_question",
+    }
+    common = {
+        "data": "episode.parquet",
+        "data_sha256": digest,
+        "selection_seed": 7,
+        "trajectory_policy": "Policy.",
+        "episodes": [episode],
+    }
+    catalog = tmp_path / "suites.json"
+    catalog.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "suites": {
+                    "dev-test": {
+                        **common,
+                        "role": "development",
+                        "sealed": False,
+                    },
+                    "heldout-test": {
+                        **common,
+                        "role": "heldout",
+                        "sealed": True,
+                    },
+                },
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="excluded development tasks"):
+        load_evaluation_suite(
+            catalog,
+            "heldout-test",
+            project_root=tmp_path,
+        )
