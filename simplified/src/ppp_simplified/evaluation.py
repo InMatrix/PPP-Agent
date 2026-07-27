@@ -20,7 +20,7 @@ from .workspace import RepositoryWorkspace
 
 
 ProgressCallback = Callable[[str], None]
-ProviderFactory = Callable[[Episode], AgentProvider]
+ProviderFactory = Callable[[Episode, int | None], AgentProvider]
 SimulatorFactory = Callable[[Episode], UserSimulator]
 
 
@@ -35,7 +35,11 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
-def _episode_filename(position: int, episode: Episode) -> str:
+def _episode_filename(
+    position: int,
+    episode: Episode,
+    inference_seed: int | None,
+) -> str:
     safe_instance = re.sub(r"[^A-Za-z0-9_.-]+", "_", episode.instance_id)
     safe_preference = re.sub(
         r"[^A-Za-z0-9_.-]+",
@@ -43,7 +47,7 @@ def _episode_filename(position: int, episode: Episode) -> str:
         episode.preference.name,
     )
     return (
-        f"{position:02d}_row-{episode.row_index}_"
+        f"{position:02d}_seed-{inference_seed}_row-{episode.row_index}_"
         f"{safe_instance}_{safe_preference}.json"
     )
 
@@ -55,15 +59,40 @@ def build_manifest(
     model: str,
     simulator: str,
     max_turns: int,
-    seed: int,
+    sample_seed: int,
+    inference_seeds: Sequence[int | None],
+    policy_label: str,
+    tool_schema_version: str,
+    code_revision: str,
 ) -> dict[str, Any]:
+    cases = [
+        {
+            "position": position,
+            "row_index": episode.row_index,
+            "instance_id": episode.instance_id,
+            "preference": episode.preference.name,
+            "inference_seed": inference_seed,
+        }
+        for position, (inference_seed, episode) in enumerate(
+            (
+                (inference_seed, episode)
+                for inference_seed in inference_seeds
+                for episode in episodes
+            ),
+            start=1,
+        )
+    ]
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "mode": mode,
         "model": model,
         "simulator": simulator,
         "max_turns": max_turns,
-        "seed": seed,
+        "sample_seed": sample_seed,
+        "inference_seeds": list(inference_seeds),
+        "policy_label": policy_label,
+        "tool_schema_version": tool_schema_version,
+        "code_revision": code_revision,
         "episodes": [
             {
                 "position": position,
@@ -75,10 +104,15 @@ def build_manifest(
             }
             for position, episode in enumerate(episodes, start=1)
         ],
+        "cases": cases,
     }
 
 
-def summarize_records(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
+def summarize_records(
+    records: Sequence[dict[str, Any]],
+    *,
+    include_seed_groups: bool = True,
+) -> dict[str, Any]:
     completed = [item for item in records if item.get("status") == "completed"]
     failed = [item for item in records if item.get("status") == "failed"]
     rewards = [item["report"]["reward"] for item in completed]
@@ -122,8 +156,12 @@ def summarize_records(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
         if reward["preference_ok"] is not None
     ]
     productivities = [float(reward["productivity"]) for reward in rewards]
+    model_calls = [
+        int(item["report"].get("model_calls", len(item["report"]["trajectory"])))
+        for item in completed
+    ]
 
-    return {
+    summary = {
         "episodes_requested": len(records),
         "episodes_completed": len(completed),
         "episodes_failed": len(failed),
@@ -197,6 +235,7 @@ def summarize_records(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
             else None
         ),
         "mean_turns": _mean([float(value) for value in turns]),
+        "mean_model_calls": _mean([float(value) for value in model_calls]),
         "mean_duration_seconds": _mean(durations),
         "failures": [
             {
@@ -208,6 +247,22 @@ def summarize_records(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
             for item in failed
         ],
     }
+    if include_seed_groups:
+        seeds = {
+            item["episode"].get("inference_seed") for item in records
+        }
+        summary["by_inference_seed"] = {
+            str(seed): summarize_records(
+                [
+                    item
+                    for item in records
+                    if item["episode"].get("inference_seed") == seed
+                ],
+                include_seed_groups=False,
+            )
+            for seed in sorted(seeds, key=lambda value: (value is None, value))
+        }
+    return summary
 
 
 def render_markdown_summary(
@@ -225,6 +280,8 @@ def render_markdown_summary(
         f"- Mode: `{manifest['mode']}`",
         f"- Agent: `{manifest['model']}`",
         f"- Simulator: `{manifest['simulator']}`",
+        f"- Policy: `{manifest['policy_label']}`",
+        f"- Inference seeds: `{manifest['inference_seeds']}`",
         f"- Completed: {summary['episodes_completed']}/"
         f"{summary['episodes_requested']}",
         f"- Exact localization rate: {metric('exact_localization_rate')}",
@@ -244,9 +301,9 @@ def render_markdown_summary(
         "",
         "## Episodes",
         "",
-        "| # | Instance | Preference | Turns | Dupes | Questions | F1 | "
-        "Reward | Termination |",
-        "|---:|---|---|---:|---:|---:|---:|---:|---|",
+        "| # | Seed | Instance | Preference | Turns | Calls | Dupes | "
+        "Questions | F1 | Reward | Termination |",
+        "|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---|",
     ]
     for position, item in enumerate(records, start=1):
         episode = item["episode"]
@@ -270,17 +327,19 @@ def render_markdown_summary(
                 )
             )
             lines.append(
-                f"| {position} | `{episode['instance_id']}` | "
-                f"`{episode['preference']}` | {len(report['trajectory'])} | "
+                f"| {position} | {episode.get('inference_seed', '—')} | "
+                f"`{episode['instance_id']}` | `{episode['preference']}` | "
+                f"{len(report['trajectory'])} | "
+                f"{report.get('model_calls', len(report['trajectory']))} | "
                 f"{duplicates} | {reward['questions_asked']} | "
                 f"{float(reward['productivity']):.3f} | "
                 f"{float(reward['total']):.3f} | `{termination}` |"
             )
         else:
             lines.append(
-                f"| {position} | `{episode['instance_id']}` | "
-                f"`{episode['preference']}` | — | — | — | — | — | "
-                f"failed: {item['error_type']} |"
+                f"| {position} | {episode.get('inference_seed', '—')} | "
+                f"`{episode['instance_id']}` | `{episode['preference']}` | "
+                f"— | — | — | — | — | — | failed: {item['error_type']} |"
             )
     lines.append("")
     return "\n".join(lines)
@@ -311,6 +370,7 @@ class BatchEvaluator:
     def run(
         self,
         episodes: Sequence[Episode],
+        inference_seeds: Sequence[int | None],
         manifest: dict[str, Any],
     ) -> dict[str, Any]:
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -326,21 +386,30 @@ class BatchEvaluator:
 
         records: list[dict[str, Any]] = []
         episodes_dir = self.output_dir / "episodes"
-        for position, episode in enumerate(episodes, start=1):
-            path = episodes_dir / _episode_filename(position, episode)
+        cases = [
+            (episode, inference_seed)
+            for inference_seed in inference_seeds
+            for episode in episodes
+        ]
+        for position, (episode, inference_seed) in enumerate(cases, start=1):
+            path = episodes_dir / _episode_filename(
+                position,
+                episode,
+                inference_seed,
+            )
             if path.exists() and self.resume:
                 previous = json.loads(path.read_text())
                 if previous.get("status") == "completed":
                     self.progress(
-                        f"[{position}/{len(episodes)}] resume "
-                        f"{episode.instance_id}"
+                        f"[{position}/{len(cases)}] resume "
+                        f"{episode.instance_id} seed={inference_seed}"
                     )
                     records.append(previous)
                     continue
 
             self.progress(
-                f"[{position}/{len(episodes)}] run {episode.instance_id} "
-                f"({episode.preference.name})"
+                f"[{position}/{len(cases)}] run {episode.instance_id} "
+                f"({episode.preference.name}) seed={inference_seed}"
             )
             started = time.perf_counter()
             episode_metadata = {
@@ -348,11 +417,12 @@ class BatchEvaluator:
                 "instance_id": episode.instance_id,
                 "repository": episode.repository,
                 "preference": episode.preference.name,
+                "inference_seed": inference_seed,
             }
             try:
                 workspace = self.workspace.prepare(episode)
                 report = AgentRunner(
-                    provider=self.provider_factory(episode),
+                    provider=self.provider_factory(episode, inference_seed),
                     simulator=self.simulator_factory(episode),
                     max_turns=self.max_turns,
                 ).run(episode, workspace)

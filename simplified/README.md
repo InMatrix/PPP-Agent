@@ -119,6 +119,9 @@ simplified/.venv/bin/ppp-simple evaluate \
   --mode live \
   --sample-size 4 \
   --max-turns 8 \
+  --inference-seeds 11,22,33 \
+  --policy-label termination-v1 \
+  --tool-schema-version v1 \
   --output-dir simplified/results/baseline-live-4
 ```
 
@@ -137,6 +140,12 @@ The live runner manages the turn budget explicitly:
 
 Reports distinguish `natural_finish`, `deadline_finish`, and `turn_limit`, and
 record how many duplicate actions were suppressed.
+
+`--sample-seed` controls which dataset rows are selected, while
+`--inference-seeds` controls LM Studio generation. Multiple inference seeds
+expand the fixed episode sample into independently persisted evaluation cases.
+The manifest also records the policy label, tool-schema version, and Git
+revision so incompatible runs cannot be mixed during resume.
 
 The output directory contains:
 

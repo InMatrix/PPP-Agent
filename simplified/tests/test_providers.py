@@ -111,3 +111,35 @@ def test_openai_compatible_qwen_restricts_finalization_to_finish() -> None:
         allowed_tools=("finish",),
     )
     assert action.tool == "finish"
+
+
+def test_openai_compatible_qwen_sends_inference_seed() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = __import__("json").loads(request.content)
+        assert payload["seed"] == 33
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"tool":"finish",'
+                                '"arguments":{"functions":[]},'
+                                '"reasoning":"done"}'
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    action = OpenAICompatibleAgent(
+        client=client,
+        seed=33,
+    ).next_action(
+        system_prompt="system",
+        messages=[{"role": "user", "content": "issue"}],
+    )
+    assert action.tool == "finish"

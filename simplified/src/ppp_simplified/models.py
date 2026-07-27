@@ -93,6 +93,8 @@ class RunReport:
         "turn_limit",
     ] = "turn_limit"
     duplicate_actions_suppressed: int = 0
+    inference_seed: int | None = None
+    model_calls: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

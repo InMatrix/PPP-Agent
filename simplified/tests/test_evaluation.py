@@ -1,4 +1,5 @@
-from ppp_simplified.evaluation import summarize_records
+from ppp_simplified.evaluation import build_manifest, summarize_records
+from ppp_simplified.models import Episode, Preference
 
 
 def test_summarize_records_aggregates_interaction_metrics() -> None:
@@ -6,7 +7,11 @@ def test_summarize_records_aggregates_interaction_metrics() -> None:
         {
             "status": "completed",
             "duration_seconds": 2.0,
-            "episode": {"instance_id": "one", "preference": "concise_question"},
+            "episode": {
+                "instance_id": "one",
+                "preference": "concise_question",
+                "inference_seed": 11,
+            },
             "report": {
                 "predicted_functions": ["pkg/mod.py:run"],
                 "termination": "natural_finish",
@@ -29,7 +34,11 @@ def test_summarize_records_aggregates_interaction_metrics() -> None:
         {
             "status": "completed",
             "duration_seconds": 4.0,
-            "episode": {"instance_id": "two", "preference": "no_ask"},
+            "episode": {
+                "instance_id": "two",
+                "preference": "no_ask",
+                "inference_seed": 22,
+            },
             "report": {
                 "predicted_functions": [],
                 "termination": "turn_limit",
@@ -65,3 +74,52 @@ def test_summarize_records_aggregates_interaction_metrics() -> None:
     assert summary["preference_compliance_rate_when_judged"] == 1.0
     assert summary["mean_turns"] == 1.5
     assert summary["mean_duration_seconds"] == 3.0
+    assert summary["by_inference_seed"]["11"]["episodes_completed"] == 1
+    assert summary["by_inference_seed"]["22"]["episodes_completed"] == 1
+
+
+def test_manifest_expands_episodes_across_inference_seeds() -> None:
+    episodes = tuple(
+        Episode(
+            instance_id=f"task-{index}",
+            repository=f"org/repo-{index}",
+            base_commit=f"abc{index}",
+            visible_issue="Issue",
+            full_issue="Issue",
+            hint="",
+            patch="",
+            expected_functions=(f"pkg/mod.py:run_{index}",),
+            is_vague=True,
+            preference=Preference(
+                name="concise_question",
+                description="Be concise.",
+                reward_rule="Comply.",
+            ),
+            source_path="fixture",
+            row_index=index,
+        )
+        for index in range(2)
+    )
+
+    manifest = build_manifest(
+        episodes=episodes,
+        mode="live",
+        model="qwen",
+        simulator="gemini",
+        max_turns=8,
+        sample_seed=7,
+        inference_seeds=(11, 22),
+        policy_label="termination-v1",
+        tool_schema_version="v1",
+        code_revision="abc123",
+    )
+
+    assert manifest["sample_seed"] == 7
+    assert manifest["inference_seeds"] == [11, 22]
+    assert len(manifest["cases"]) == 4
+    assert [case["inference_seed"] for case in manifest["cases"]] == [
+        11,
+        11,
+        22,
+        22,
+    ]

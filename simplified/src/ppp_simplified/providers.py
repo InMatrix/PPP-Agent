@@ -105,6 +105,7 @@ class OpenAICompatibleAgent(AgentProvider):
         model: str = "Qwen/Qwen3.5-4B",
         base_url: str = "http://localhost:8000/v1",
         api_key: str | None = None,
+        seed: int | None = None,
         timeout_seconds: float = 300,
         client: httpx.Client | None = None,
     ) -> None:
@@ -112,6 +113,7 @@ class OpenAICompatibleAgent(AgentProvider):
         self.name = model
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key or os.getenv("QWEN_API_KEY") or "EMPTY"
+        self.seed = seed
         self.timeout_seconds = timeout_seconds
         # LM Studio is a local service. Ignoring environment/system proxies keeps
         # localhost requests from being intercepted on proxy-configured Macs.
@@ -142,27 +144,30 @@ class OpenAICompatibleAgent(AgentProvider):
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        request_payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        system_prompt
+                        + restriction
+                        + "\n\n"
+                        + ACTION_SCHEMA
+                    ),
+                },
+                *messages,
+            ],
+            "temperature": 0.2,
+            "max_tokens": 900,
+            "response_format": action_response_format(selected_tools),
+        }
+        if self.seed is not None:
+            request_payload["seed"] = self.seed
         response = self.client.post(
             f"{self.base_url}/chat/completions",
             headers=headers,
-            json={
-                "model": self.model,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            system_prompt
-                            + restriction
-                            + "\n\n"
-                            + ACTION_SCHEMA
-                        ),
-                    },
-                    *messages,
-                ],
-                "temperature": 0.2,
-                "max_tokens": 900,
-                "response_format": action_response_format(selected_tools),
-            },
+            json=request_payload,
         )
         response.raise_for_status()
         data = response.json()

@@ -66,6 +66,7 @@ class AgentRunner:
         trajectory: list[TrajectoryStep] = []
         observations_by_action: dict[str, str] = {}
         duplicate_actions_suppressed = 0
+        model_calls = 0
         termination = "turn_limit"
         for turn in range(1, self.max_turns + 1):
             remaining = self.max_turns - turn
@@ -87,6 +88,7 @@ class AgentRunner:
                     "One exploration turn remains before mandatory finalization. "
                     "Gather only evidence that can change the final answer."
                 )
+            model_calls += 1
             action = self.provider.next_action(
                 system_prompt=budget_prompt,
                 messages=messages,
@@ -157,4 +159,6 @@ class AgentRunner:
             workspace=str(workspace),
             termination=termination,
             duplicate_actions_suppressed=duplicate_actions_suppressed,
+            inference_seed=getattr(self.provider, "seed", None),
+            model_calls=model_calls,
         )

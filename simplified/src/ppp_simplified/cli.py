@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -129,6 +130,7 @@ def command_run(args: argparse.Namespace) -> int:
         provider = OpenAICompatibleAgent(
             model=args.qwen_model,
             base_url=args.qwen_base_url,
+            seed=args.qwen_seed,
         )
         simulator = GeminiUserSimulator(model=args.gemini_model)
     report = AgentRunner(
@@ -155,23 +157,29 @@ def command_evaluate(args: argparse.Namespace) -> int:
         args.data,
         sample_size=args.sample_size,
         preferences=preferences,
-        seed=args.seed,
+        seed=args.sample_seed,
         anchor_instance=args.anchor_instance or None,
         anchor_preference=args.anchor_preference or None,
     )
+    inference_seeds = tuple(
+        int(item.strip())
+        for item in args.inference_seeds.split(",")
+        if item.strip()
+    ) or (None,)
     if args.mode == "offline":
         model_name = ScriptedSmokeAgent.name
         simulator_name = DeterministicUserSimulator.name
-        provider_factory = lambda episode: ScriptedSmokeAgent(
+        provider_factory = lambda episode, inference_seed: ScriptedSmokeAgent(
             episode.expected_functions
         )
         simulator_factory = lambda episode: DeterministicUserSimulator()
     else:
         model_name = args.qwen_model
         simulator_name = args.gemini_model
-        provider_factory = lambda episode: OpenAICompatibleAgent(
+        provider_factory = lambda episode, inference_seed: OpenAICompatibleAgent(
             model=args.qwen_model,
             base_url=args.qwen_base_url,
+            seed=inference_seed,
         )
         simulator_factory = lambda episode: GeminiUserSimulator(
             model=args.gemini_model
@@ -183,7 +191,16 @@ def command_evaluate(args: argparse.Namespace) -> int:
         model=model_name,
         simulator=simulator_name,
         max_turns=args.max_turns,
-        seed=args.seed,
+        sample_seed=args.sample_seed,
+        inference_seeds=inference_seeds,
+        policy_label=args.policy_label,
+        tool_schema_version=args.tool_schema_version,
+        code_revision=subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip(),
     )
     if args.dry_run:
         print(json.dumps(manifest, indent=2))
@@ -196,7 +213,7 @@ def command_evaluate(args: argparse.Namespace) -> int:
         simulator_factory=simulator_factory,
         max_turns=args.max_turns,
         resume=args.resume,
-    ).run(episodes, manifest)
+    ).run(episodes, inference_seeds, manifest)
     print(json.dumps(summary, indent=2))
     print(f"summary: {args.output_dir / 'summary.md'}")
     return 0 if summary["episodes_failed"] == 0 else 1
@@ -248,6 +265,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--gemini-model",
         default="gemini-3.5-flash-lite",
     )
+    run.add_argument("--qwen-seed", type=int)
 
     evaluate = subparsers.add_parser("evaluate")
     evaluate.add_argument(
@@ -267,7 +285,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     evaluate.add_argument("--mode", choices=("offline", "live"), default="offline")
     evaluate.add_argument("--sample-size", type=int, default=4)
-    evaluate.add_argument("--seed", type=int, default=7)
+    evaluate.add_argument(
+        "--sample-seed",
+        "--seed",
+        dest="sample_seed",
+        type=int,
+        default=7,
+    )
+    evaluate.add_argument(
+        "--inference-seeds",
+        default="",
+        help="Comma-separated LM Studio sampling seeds.",
+    )
+    evaluate.add_argument("--policy-label", default="termination-v1")
+    evaluate.add_argument("--tool-schema-version", default="v1")
     evaluate.add_argument(
         "--preferences",
         default=",".join(DEFAULT_EVALUATION_PREFERENCES),
