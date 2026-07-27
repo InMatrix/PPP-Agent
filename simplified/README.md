@@ -196,8 +196,9 @@ definition paths, lines, and qualified names.
 
 The first exact duplicate proposal receives one retry without consuming another
 logical turn. Finish entries are checked against repository files and AST
-symbols; one invalid finish receives a correction attempt, and a still-invalid
-correction is retained for scoring but marked unverified in the report.
+function or method definitions; classes are rejected. One invalid finish
+receives a correction attempt, and a still-invalid correction is retained for
+scoring but marked unverified in the report.
 
 Navigation v3 is an executable policy selected with
 `--policy-version navigation-v3`; `--policy-label` remains the human-readable

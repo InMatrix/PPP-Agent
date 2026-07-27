@@ -158,6 +158,7 @@ def test_finish_validation_checks_file_and_qualified_symbol(
         (
             "missing.py:run",
             "mod.py:Widget.missing",
+            "mod.py:Widget",
             "malformed",
         )
     )
@@ -165,5 +166,7 @@ def test_finish_validation_checks_file_and_qualified_symbol(
     assert [error.value for error in errors] == [
         "missing.py:run",
         "mod.py:Widget.missing",
+        "mod.py:Widget",
         "malformed",
     ]
+    assert errors[2].message == "expected an existing function or method, found class"

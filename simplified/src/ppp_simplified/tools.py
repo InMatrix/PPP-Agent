@@ -469,11 +469,22 @@ class ReadOnlyRepositoryTools:
                     )
                 )
                 continue
-            if not self.symbols.contains(raw_path, qualified_name):
+            location = self.symbols.resolve(raw_path, qualified_name)
+            if location is None:
                 errors.append(
                     FunctionValidationError(
                         value=value,
                         message="symbol is not defined in that file",
+                    )
+                )
+            elif location.kind != "function":
+                errors.append(
+                    FunctionValidationError(
+                        value=value,
+                        message=(
+                            "expected an existing function or method, found "
+                            f"{location.kind}"
+                        ),
                     )
                 )
         return tuple(errors)

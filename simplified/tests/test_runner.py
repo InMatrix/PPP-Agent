@@ -206,6 +206,53 @@ def test_runner_corrects_invalid_finish_once(tmp_path: Path) -> None:
     assert [step.attempt for step in report.trajectory] == [1, 2]
 
 
+class ClassThenMethodAgent:
+    name = "class-then-method-agent"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def next_action(
+        self,
+        *,
+        system_prompt,
+        messages,
+        allowed_tools=None,
+    ) -> AgentAction:
+        del system_prompt, messages, allowed_tools
+        self.calls += 1
+        return AgentAction(
+            tool="finish",
+            arguments={
+                "functions": [
+                    "pkg/widget.py:Widget"
+                    if self.calls == 1
+                    else "pkg/widget.py:Widget.run"
+                ]
+            },
+        )
+
+
+def test_runner_corrects_class_to_method_finish(tmp_path: Path) -> None:
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg/widget.py").write_text(
+        "class Widget:\n"
+        "    def run(self):\n"
+        "        pass\n"
+    )
+
+    report = AgentRunner(
+        provider=ClassThenMethodAgent(),
+        simulator=DeterministicUserSimulator(),
+        max_turns=1,
+    ).run(episode(), tmp_path)
+
+    assert report.finish_correction_attempted is True
+    assert report.finish_validation_passed is True
+    assert report.predicted_functions == ("pkg/widget.py:Widget.run",)
+    assert "found class" in report.trajectory[0].observation
+
+
 def test_runner_preserves_unverified_correction_for_scoring(
     tmp_path: Path,
 ) -> None:
