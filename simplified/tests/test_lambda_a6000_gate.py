@@ -49,6 +49,13 @@ def test_lambda_requirements_support_transformers_five():
     assert "ray[default]>=2.48.0,<3" in requirements
 
 
+def test_lambda_doctor_checks_the_exact_async_rollout_contract():
+    source = SCRIPT.read_text()
+
+    assert "vllm_async_server import vLLMReplica" in source
+    assert 'if "enable_log_requests" not in async_llm_parameters:' in source
+
+
 def test_vendored_verl_has_transformers_five_vision_alias():
     compatibility = (
         ROOT / "verl" / "utils" / "transformers_compat.py"

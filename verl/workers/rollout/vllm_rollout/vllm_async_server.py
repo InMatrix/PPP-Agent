@@ -49,6 +49,7 @@ from vllm.v1.executor.abstract import Executor
 
 from verl.single_controller.ray import RayClassWithInitArgs
 from verl.utils.config import omega_conf_to_dataclass
+from verl.utils.vllm_compat import resolve_enable_log_requests
 from verl.utils.vllm.vllm_fp8_utils import apply_vllm_fp8_patches
 from verl.workers.config import HFModelConfig, RolloutConfig
 from verl.workers.rollout.replica import RolloutMode, RolloutReplica, TokenOutput
@@ -353,15 +354,11 @@ class vLLMHttpServerBase:
         vllm_config = engine_args.create_engine_config(usage_context=usage_context)
         vllm_config.parallel_config.data_parallel_master_port = self._dp_master_port
 
-        disable_log_requests = getattr(
-            engine_args,
-            "disable_log_requests",
-            not getattr(engine_args, "enable_log_requests", False),
-        )
+        enable_log_requests = resolve_enable_log_requests(engine_args)
         engine_client = AsyncLLM.from_vllm_config(
             vllm_config=vllm_config,
             usage_context=usage_context,
-            disable_log_requests=disable_log_requests,
+            enable_log_requests=enable_log_requests,
             disable_log_stats=engine_args.disable_log_stats,
         )
 

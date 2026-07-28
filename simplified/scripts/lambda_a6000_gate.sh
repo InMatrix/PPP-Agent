@@ -121,6 +121,7 @@ fi
 export PYTHONPATH="$repo_root${PYTHONPATH:+:$PYTHONPATH}"
 "$venv_dir/bin/python" - <<'PY'
 import importlib
+import inspect
 import sys
 
 required = ("torch", "transformers", "vllm", "peft", "ray", "hydra", "omegaconf", "ppp_simplified", "verl")
@@ -140,6 +141,20 @@ import torch
 if not torch.cuda.is_available():
     raise SystemExit("FAIL: PyTorch cannot see CUDA.")
 print(f"torch.cuda={torch.version.cuda}; device={torch.cuda.get_device_name(0)}")
+
+# Import the exact async rollout path and verify the constructor contract used
+# by the vendored server. Generic package imports did not catch these API
+# drifts before paid GPU initialization.
+from vllm.v1.engine.async_llm import AsyncLLM
+from verl.workers.rollout.vllm_rollout.vllm_async_server import vLLMReplica
+
+async_llm_parameters = inspect.signature(AsyncLLM.from_vllm_config).parameters
+if "enable_log_requests" not in async_llm_parameters:
+    raise SystemExit(
+        "FAIL: AsyncLLM.from_vllm_config lacks enable_log_requests; "
+        "the vendored rollout adapter and installed vLLM are incompatible."
+    )
+print("verl.async_rollout=imported; AsyncLLM.enable_log_requests=supported")
 PY
 
 echo "PASS: host is ready for the next compatibility command."
