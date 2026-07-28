@@ -19,3 +19,4 @@ def test_vllm_utility_imports_support_version_012_modules():
 
     assert "from vllm.utils.argparse_utils import FlexibleArgumentParser" in source
     assert "from vllm.utils.network_utils import get_tcp_uri" in source
+    assert 'getattr(engine_args, "enable_log_requests", False)' in source

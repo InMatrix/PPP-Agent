@@ -353,10 +353,15 @@ class vLLMHttpServerBase:
         vllm_config = engine_args.create_engine_config(usage_context=usage_context)
         vllm_config.parallel_config.data_parallel_master_port = self._dp_master_port
 
+        disable_log_requests = getattr(
+            engine_args,
+            "disable_log_requests",
+            not getattr(engine_args, "enable_log_requests", False),
+        )
         engine_client = AsyncLLM.from_vllm_config(
             vllm_config=vllm_config,
             usage_context=usage_context,
-            disable_log_requests=engine_args.disable_log_requests,
+            disable_log_requests=disable_log_requests,
             disable_log_stats=engine_args.disable_log_stats,
         )
 
