@@ -46,3 +46,18 @@ def test_lambda_requirements_support_transformers_five():
     ).read_text()
     assert "safetensors>=0.8.0" in requirements
     assert "safetensors==0.5.3" not in requirements
+
+
+def test_vendored_verl_has_transformers_five_vision_alias():
+    compatibility = (
+        ROOT / "verl" / "utils" / "transformers_compat.py"
+    ).read_text()
+    assert "except ImportError:" in compatibility
+    assert "AutoModelForVision2Seq = AutoModelForImageTextToText" in compatibility
+    for relative in (
+        "verl/utils/model.py",
+        "verl/workers/fsdp_workers.py",
+        "verl/model_merger/base_model_merger.py",
+    ):
+        source = (ROOT / relative).read_text()
+        assert "verl.utils.transformers_compat import AutoModelForVision2Seq" in source
