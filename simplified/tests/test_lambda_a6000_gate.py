@@ -46,6 +46,7 @@ def test_lambda_requirements_support_transformers_five():
     ).read_text()
     assert "safetensors>=0.8.0" in requirements
     assert "safetensors==0.5.3" not in requirements
+    assert "ray[default]>=2.48.0,<3" in requirements
 
 
 def test_vendored_verl_has_transformers_five_vision_alias():
