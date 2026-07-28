@@ -38,3 +38,11 @@ def test_lambda_gate_keeps_distinct_rollout_stacks():
     assert 'vllm_version="0.18.1"' in source
     assert 'transformers_requirement="transformers>=4.51,<5"' in source
     assert 'maximum 2 hours / \\$3 compute' in source
+
+
+def test_lambda_requirements_support_transformers_five():
+    requirements = (
+        ROOT / "simplified" / "requirements.lambda-a6000.txt"
+    ).read_text()
+    assert "safetensors>=0.8.0" in requirements
+    assert "safetensors==0.5.3" not in requirements
