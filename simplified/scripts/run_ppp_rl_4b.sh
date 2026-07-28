@@ -119,6 +119,9 @@ command=(
   actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1
   actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=10240
   actor_rollout_ref.model.path="$model_id"
+  # Verl defaults actor construction to FlashAttention 2. Use PyTorch SDPA so
+  # the compatibility gate does not depend on a separately compiled extension.
+  +actor_rollout_ref.model.override_config.attn_implementation=sdpa
   actor_rollout_ref.model.lora_rank=16
   actor_rollout_ref.model.lora_alpha=32
   actor_rollout_ref.model.target_modules=all-linear

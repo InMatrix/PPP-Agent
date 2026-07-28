@@ -18,6 +18,7 @@ def test_training_launcher_is_print_only_by_default():
     assert "scripts.train_ppp_simplified" in result.stdout
     assert "total_training_steps=1" in result.stdout
     assert "model.path=Qwen/Qwen3.5-4B" in result.stdout
+    assert "model.override_config.attn_implementation=sdpa" in result.stdout
     assert "actor.ppo_mini_batch_size=1" in result.stdout
     assert "data.train_batch_size=1" in result.stdout
     assert "rollout.n=8" in result.stdout
