@@ -117,7 +117,7 @@ simplified/.venv-lambda-qwen3/bin/ppp-train train \
   --steps 1 --simulator deterministic --model qwen3 --execute
 ```
 
-The fallback pins vLLM 0.18.1 and Transformers 4.x. Do not mix primary and
+The fallback pins vLLM 0.12.0, matching Verl 0.7.0, and Transformers 4.x. Do not mix primary and
 fallback packages in one virtual environment. The bootstrap script refuses to
 reuse an existing virtual environment; select a new `--venv` path for each
 fresh compatibility attempt.

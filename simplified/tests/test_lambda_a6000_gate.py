@@ -35,7 +35,7 @@ def test_lambda_gate_keeps_distinct_rollout_stacks():
     source = SCRIPT.read_text()
     assert 'vllm_version="0.21.0"' in source
     assert 'transformers_requirement="transformers>=5,<6"' in source
-    assert 'vllm_version="0.18.1"' in source
+    assert 'vllm_version="0.12.0"' in source
     assert 'transformers_requirement="transformers>=4.51,<5"' in source
     assert 'maximum 2 hours / \\$3 compute' in source
 

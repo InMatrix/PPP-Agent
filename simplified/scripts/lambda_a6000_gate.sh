@@ -42,7 +42,7 @@ case "$model" in
     ;;
   qwen3)
     model_id="Qwen/Qwen3-4B"
-    vllm_version="0.18.1"
+    vllm_version="0.12.0"
     transformers_requirement="transformers>=4.51,<5"
     ;;
   *)
