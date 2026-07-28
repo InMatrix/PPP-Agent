@@ -18,6 +18,7 @@ test = ["pytest>=8.0.0"]
 
 [project.scripts]
 ppp-simple = "ppp_simplified.cli:main"
+ppp-train = "ppp_simplified.training_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ppp_simplified"]

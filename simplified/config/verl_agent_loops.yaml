@@ -1,0 +1,2 @@
+- name: simplified_ppp_agent
+  _target_: ppp_simplified.verl_agent_loop_impl.SimplifiedPPPAgentLoop

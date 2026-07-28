@@ -245,6 +245,22 @@ def _episode_from_row(
     )
 
 
+def episode_from_training_payload(
+    *,
+    ability: str,
+    extra_info: dict[str, Any],
+    source_path: str = "training-dataloader",
+    row_index: int = -1,
+) -> Episode:
+    """Build the shared episode contract from a Verl dataloader item."""
+
+    return _episode_from_row(
+        {"ability": ability, "extra_info": extra_info},
+        path=Path(source_path),
+        row_index=row_index,
+    )
+
+
 def iter_episodes(path: Path) -> Iterator[Episode]:
     """Stream fully parsed episodes in parquet row order."""
 

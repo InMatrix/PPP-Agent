@@ -1,0 +1,26 @@
+# Initial, reproducible Python layer for the A6000 compatibility gate.
+#
+# The bootstrap script installs the selected vLLM stack first because its wheel
+# constrains PyTorch and Transformers. These are the remaining dependencies
+# used by the vendored VERL source and the LoRA adapter. They are a
+# compatibility-gate baseline, not evidence that the GPU gate has passed.
+accelerate==1.6.0
+peft==0.15.2
+ray[default]==2.45.0
+hydra-core==1.3.2
+omegaconf==2.3.0
+tensordict>=0.10.0
+einops==0.8.0
+packaging==24.2
+safetensors==0.5.3
+pillow>=11.0.0
+codetiming>=1.4.0
+datasets>=3.0.0,<5
+dill>=0.3.8
+pandas>=2.2.0
+psutil>=6.0.0
+PyYAML>=6.0.2
+qwen-vl-utils>=0.0.14
+torchdata>=0.11.0
+torchvision
+tqdm>=4.67.0
