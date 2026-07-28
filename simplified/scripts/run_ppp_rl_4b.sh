@@ -166,6 +166,9 @@ command=(
   trainer.project_name=ppp-teaching
   trainer.experiment_name="${model_slug}-lora-${simulator}-${steps}step"
   trainer.default_local_dir="$run_dir"
+  # Declare keys that vendored Verl mutates so OmegaConf struct mode permits
+  # the updates inside main_ppo.run_ppo.
+  +ray_kwargs.ray_init.runtime_env.env_vars.VLLM_USE_V1=1
   +ray_kwargs.ray_init.runtime_env.env_vars.VERL_FILE_LOGGER_PATH="${run_dir}/training-metrics.jsonl"
 )
 

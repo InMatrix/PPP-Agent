@@ -24,6 +24,7 @@ def test_training_launcher_is_print_only_by_default():
     assert "data.val_files=simplified/results/training/prepared/train-16x13.parquet" in result.stdout
     assert "data/test_id.parquet" not in result.stdout
     assert "VERL_FILE_LOGGER_PATH=" in result.stdout
+    assert "VLLM_USE_V1=1" in result.stdout
     assert "agent_loop_config_path=simplified/config/verl_agent_loops.yaml" in result.stdout
     assert "language_model_only=True" in result.stdout
 
