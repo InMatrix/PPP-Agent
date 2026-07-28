@@ -95,7 +95,7 @@ echo "Repository: $repo_root"
 echo "Environment: $venv_dir"
 echo "Model gate: $model_id"
 echo "Rollout stack: vllm==$vllm_version; $transformers_requirement"
-echo "Gate: A6000-first, maximum 2 hours / $3 compute"
+echo "Gate: A6000-first, maximum 2 hours / \$3 compute"
 
 command -v nvidia-smi >/dev/null || {
   echo "FAIL: nvidia-smi is unavailable; this is not a usable CUDA host." >&2
