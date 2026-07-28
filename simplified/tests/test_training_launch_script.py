@@ -28,6 +28,26 @@ def test_training_launcher_is_print_only_by_default():
     assert "language_model_only=True" in result.stdout
 
 
+def test_training_launcher_uses_explicit_python_interpreter():
+    result = subprocess.run(
+        [
+            "bash",
+            str(SCRIPT),
+            "--steps",
+            "1",
+            "--simulator",
+            "deterministic",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+        env={"PPP_PYTHON": "/opt/ppp/bin/python"},
+    )
+    assert result.returncode == 0
+    assert "/opt/ppp/bin/python" in result.stdout
+
+
 def test_training_launcher_has_explicit_qwen3_fallback():
     result = subprocess.run(
         [

@@ -117,8 +117,8 @@ def test_train_uses_argument_list_not_shell(monkeypatch, tmp_path: Path):
     class Result:
         returncode = 0
 
-    def fake_run(command, *, check):
-        calls.append((command, check))
+    def fake_run(command, *, check, env):
+        calls.append((command, check, env["PPP_PYTHON"]))
         return Result()
 
     monkeypatch.setattr("ppp_simplified.training_cli.subprocess.run", fake_run)
@@ -126,7 +126,21 @@ def test_train_uses_argument_list_not_shell(monkeypatch, tmp_path: Path):
         type("Args", (), {"execute": False, "steps": 1, "simulator": "deterministic", "model": "qwen35", "projected_compute_usd": None})()
     ) == 0
     assert calls == [
-        (["bash", "simplified/scripts/run_ppp_rl_4b.sh", "--print-command", "--steps", "1", "--simulator", "deterministic", "--model", "qwen35"], False)
+        (
+            [
+                "bash",
+                "simplified/scripts/run_ppp_rl_4b.sh",
+                "--print-command",
+                "--steps",
+                "1",
+                "--simulator",
+                "deterministic",
+                "--model",
+                "qwen35",
+            ],
+            False,
+            __import__("sys").executable,
+        )
     ]
 
 

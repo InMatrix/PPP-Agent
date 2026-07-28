@@ -92,13 +92,13 @@ if [[ "$mode" == "execute" && "$steps" == "40" ]]; then
     echo "--projected-compute-usd is required before extending to 40 steps." >&2
     exit 2
   fi
-  python -m ppp_simplified.training_cli check-extension \
+  "${PPP_PYTHON:-python3}" -m ppp_simplified.training_cli check-extension \
     --run-dir "$run_dir" \
     --projected-compute-usd "$projected_compute_usd"
 fi
 
 command=(
-  python -m scripts.train_ppp_simplified
+  "${PPP_PYTHON:-python3}" -m scripts.train_ppp_simplified
   algorithm.adv_estimator=foldgrpo
   algorithm.norm_adv_by_std_in_grpo=True
   actor_rollout_ref.rollout.agent.default_agent_loop=simplified_ppp_agent
@@ -207,7 +207,7 @@ export VERL_FILE_LOGGER_PATH="${run_dir}/training-metrics.jsonl"
 ppp_run_started_at="$(date +%s)"
 "${command[@]}"
 ppp_run_finished_at="$(date +%s)"
-python -m ppp_simplified.training_cli summarize-run \
+"${PPP_PYTHON:-python3}" -m ppp_simplified.training_cli summarize-run \
   --run-dir "$run_dir" \
   --compute-seconds "$((ppp_run_finished_at - ppp_run_started_at))" \
   --hourly-usd 1.09

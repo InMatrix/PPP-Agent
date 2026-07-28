@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -536,7 +537,12 @@ def command_train(args: argparse.Namespace) -> int:
                 str(args.projected_compute_usd),
             ]
         )
-    return subprocess.run(command, check=False).returncode
+    environment = {**os.environ, "PPP_PYTHON": sys.executable}
+    return subprocess.run(
+        command,
+        check=False,
+        env=environment,
+    ).returncode
 
 
 def command_evaluate(args: argparse.Namespace) -> int:
