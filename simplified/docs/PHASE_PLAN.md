@@ -107,19 +107,18 @@ Checkpoint save and reload are now proved. Before another model-backed command:
 
 ## Subsequent sequence
 
-1. Rerun the deterministic command and prove checkpoint reload/resume.
-2. Run one eight-trajectory live Gemini group without an optimizer update.
-3. Review reward variance, simulator caching, sanitation, latency, memory, and
+1. Run one eight-trajectory live Gemini group without an optimizer update.
+2. Review reward variance, simulator caching, sanitation, latency, memory, and
    projected cost.
-4. Run 20 RL steps.
-5. Extend to 40 only if loss and KL remain finite, at least 25% of groups have
+3. Run 20 RL steps.
+4. Extend to 40 only if loss and KL remain finite, at least 25% of groups have
    nonzero reward variance, resume works, and projected phase compute remains
    below $45.
-6. Evaluate the untrained and trained 4B adapters across inference seeds
+5. Evaluate the untrained and trained 4B adapters across inference seeds
    11, 22, and 33.
-7. Contrast results with the frozen 9B reference without presenting it as an
+6. Contrast results with the frozen 9B reference without presenting it as an
    equivalent control.
-8. Produce the learner notebook trace and final development retrospective.
+7. Produce the learner notebook trace and final development retrospective.
 
 ## Budget and artifact ledger
 
