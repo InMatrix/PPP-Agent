@@ -528,6 +528,107 @@ def command_check_extension(args: argparse.Namespace) -> int:
     return 0
 
 
+def _sha256_file(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def command_verify_continuation(args: argparse.Namespace) -> int:
+    """Prove that one resumed group produced an effective LoRA update."""
+
+    if (args.from_step, args.to_step) != (1, 2):
+        raise ValueError("The bounded continuation verifier only accepts step 1 to 2.")
+    if args.baseline_trajectories != PPPTrainingConfig().group_size:
+        raise ValueError("Step-2 continuation requires exactly eight baseline trajectories.")
+
+    from_adapter = (
+        args.run_dir
+        / f"global_step_{args.from_step}"
+        / "actor"
+        / "lora_adapter"
+        / "adapter_model.safetensors"
+    )
+    to_adapter = (
+        args.run_dir
+        / f"global_step_{args.to_step}"
+        / "actor"
+        / "lora_adapter"
+        / "adapter_model.safetensors"
+    )
+    for required in (from_adapter, to_adapter):
+        if not required.is_file():
+            raise FileNotFoundError(f"Continuation adapter does not exist: {required}")
+
+    before_sha256 = _sha256_file(from_adapter)
+    after_sha256 = _sha256_file(to_adapter)
+    if before_sha256 != args.expected_before_sha256:
+        raise ValueError("Step-1 adapter changed after the continuation started.")
+    if before_sha256 == after_sha256:
+        raise ValueError("Continuation did not change the LoRA adapter.")
+
+    trajectory_dir = args.run_dir / "sanitized-trajectories"
+    trajectory_count = len(list(trajectory_dir.glob("*.json")))
+    expected_trajectories = args.baseline_trajectories + PPPTrainingConfig().group_size
+    if trajectory_count != expected_trajectories:
+        raise ValueError(
+            "Continuation must add exactly eight trajectories: "
+            f"expected {expected_trajectories}, found {trajectory_count}."
+        )
+
+    step_metrics = None
+    metrics_path = args.run_dir / "training-metrics.jsonl"
+    for line in metrics_path.read_text().splitlines():
+        record = json.loads(line)
+        if int(record.get("step", -1)) == args.to_step:
+            step_metrics = record.get("data", {})
+    if step_metrics is None:
+        raise ValueError(f"No scalar metrics found for continuation step {args.to_step}.")
+
+    required_metrics = {
+        "policy_loss": "actor/pg_loss",
+        "gradient_norm": "actor/grad_norm",
+        "rollout_kl": "rollout_corr/kl",
+    }
+    verified_metrics: dict[str, float] = {}
+    for output_name, metric_name in required_metrics.items():
+        try:
+            value = float(step_metrics[metric_name])
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(
+                f"Continuation metric is missing or invalid: {metric_name}."
+            ) from error
+        if not math.isfinite(value):
+            raise ValueError(f"Continuation metric is non-finite: {metric_name}.")
+        verified_metrics[output_name] = value
+    if verified_metrics["gradient_norm"] <= 0:
+        raise ValueError("Continuation gradient norm must be positive.")
+
+    payload = {
+        "schema_version": 1,
+        "stage": "step_2_continuation",
+        "status": "passed",
+        "from_step": args.from_step,
+        "to_step": args.to_step,
+        "group_size": PPPTrainingConfig().group_size,
+        "baseline_trajectories": args.baseline_trajectories,
+        "final_trajectories": trajectory_count,
+        "new_trajectories": trajectory_count - args.baseline_trajectories,
+        "before_adapter_sha256": before_sha256,
+        "after_adapter_sha256": after_sha256,
+        "adapter_changed": True,
+        **verified_metrics,
+    }
+    output = args.output or args.run_dir / "continuation-step-2.json"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    print(f"continuation evidence: {output}")
+    print(json.dumps(payload, indent=2, sort_keys=True))
+    return 0
+
+
 def command_train(args: argparse.Namespace) -> int:
     launcher = Path("simplified/scripts/run_ppp_rl_4b.sh")
     if not launcher.is_file():
@@ -694,11 +795,23 @@ def build_parser() -> argparse.ArgumentParser:
     extension.add_argument("--projected-compute-usd", type=float, required=True)
     extension.set_defaults(handler=command_check_extension)
 
+    continuation = subparsers.add_parser(
+        "verify-continuation",
+        help="Verify eight new trajectories, nonzero gradient, and adapter delta.",
+    )
+    continuation.add_argument("--run-dir", type=Path, required=True)
+    continuation.add_argument("--from-step", type=int, default=1)
+    continuation.add_argument("--to-step", type=int, default=2)
+    continuation.add_argument("--baseline-trajectories", type=int, required=True)
+    continuation.add_argument("--expected-before-sha256", required=True)
+    continuation.add_argument("--output", type=Path)
+    continuation.set_defaults(handler=command_verify_continuation)
+
     train = subparsers.add_parser(
         "train",
         help="Print the guarded Verl command, or execute it after paid-run confirmation.",
     )
-    train.add_argument("--steps", type=int, choices=(1, 20, 40), default=20)
+    train.add_argument("--steps", type=int, choices=(1, 2, 20, 40), default=20)
     train.add_argument(
         "--simulator",
         choices=("deterministic", "gemini"),

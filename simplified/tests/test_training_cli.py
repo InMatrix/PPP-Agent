@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from ppp_simplified.training_cli import (
     command_contract_gate,
     command_summarize_run,
     command_check_extension,
+    command_verify_continuation,
     command_train,
     command_evaluate,
     command_export,
@@ -43,11 +45,12 @@ def artifact() -> dict:
 
 def test_parser_exposes_local_and_guarded_gpu_commands():
     parser = build_parser()
-    assert {"doctor", "prepare", "contract-gate", "smoke", "live-group", "export", "summarize-run", "check-extension", "train", "evaluate"} <= set(parser._subparsers._group_actions[0].choices)
+    assert {"doctor", "prepare", "contract-gate", "smoke", "live-group", "export", "summarize-run", "check-extension", "verify-continuation", "train", "evaluate"} <= set(parser._subparsers._group_actions[0].choices)
     train = parser.parse_args(["train", "--steps", "1", "--simulator", "deterministic"])
     assert train.steps == 1
     assert train.execute is False
     assert train.model == "qwen35"
+    assert parser.parse_args(["train", "--steps", "2"]).steps == 2
     live = parser.parse_args(["live-group"])
     assert live.inference_seeds == DEFAULT_LIVE_INFERENCE_SEEDS
     assert live.model == "qwen35"
@@ -270,3 +273,69 @@ def test_extension_gate_checks_variance_resume_metrics_adapter_and_budget(tmp_pa
                 {"run_dir": run_dir, "projected_compute_usd": 46.0},
             )()
         )
+
+
+def test_continuation_gate_requires_adapter_delta_and_positive_gradient(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    before = run_dir / "global_step_1/actor/lora_adapter/adapter_model.safetensors"
+    after = run_dir / "global_step_2/actor/lora_adapter/adapter_model.safetensors"
+    before.parent.mkdir(parents=True)
+    after.parent.mkdir(parents=True)
+    before.write_bytes(b"before")
+    after.write_bytes(b"after")
+    trajectories = run_dir / "sanitized-trajectories"
+    trajectories.mkdir()
+    for index in range(16):
+        (trajectories / f"{index}.json").write_text("{}")
+    metrics_path = run_dir / "training-metrics.jsonl"
+    metrics_path.write_text(
+        json.dumps(
+            {
+                "step": 2,
+                "data": {
+                    "actor/pg_loss": 0.01,
+                    "actor/grad_norm": 0.2,
+                    "rollout_corr/kl": 0.001,
+                },
+            }
+        )
+        + "\n"
+    )
+    expected_before = hashlib.sha256(b"before").hexdigest()
+    output = tmp_path / "continuation.json"
+    args = type(
+        "Args",
+        (),
+        {
+            "run_dir": run_dir,
+            "from_step": 1,
+            "to_step": 2,
+            "baseline_trajectories": 8,
+            "expected_before_sha256": expected_before,
+            "output": output,
+        },
+    )()
+
+    assert command_verify_continuation(args) == 0
+    assert json.loads(output.read_text())["adapter_changed"] is True
+
+    args.baseline_trajectories = 7
+    with pytest.raises(ValueError, match="exactly eight baseline"):
+        command_verify_continuation(args)
+    args.baseline_trajectories = 8
+
+    metrics_path.write_text(
+        json.dumps(
+            {
+                "step": 2,
+                "data": {
+                    "actor/pg_loss": 0.0,
+                    "actor/grad_norm": 0.0,
+                    "rollout_corr/kl": 0.0,
+                },
+            }
+        )
+        + "\n"
+    )
+    with pytest.raises(ValueError, match="gradient norm must be positive"):
+        command_verify_continuation(args)

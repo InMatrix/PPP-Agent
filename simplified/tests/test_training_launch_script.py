@@ -167,6 +167,56 @@ def test_training_launcher_has_explicit_qwen3_fallback():
     assert "language_model_only" not in result.stdout
 
 
+def test_step_two_uses_compatibility_directory_and_total():
+    result = subprocess.run(
+        [
+            "bash",
+            str(SCRIPT),
+            "--steps",
+            "2",
+            "--simulator",
+            "gemini",
+            "--model",
+            "qwen3",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "total_training_steps=2" in result.stdout
+    assert "qwen3-4b/compatibility" in result.stdout
+
+
+def test_step_two_requires_verified_step_one_checkpoint(tmp_path):
+    result = subprocess.run(
+        [
+            "bash",
+            str(SCRIPT),
+            "--execute",
+            "--steps",
+            "2",
+            "--simulator",
+            "deterministic",
+            "--model",
+            "qwen3",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+        env={
+            "CONFIRM_PAID_TRAINING": "I_UNDERSTAND_LAMBDA_IS_BILLING",
+            "PPP_RUN_DIR": str(tmp_path / "run"),
+        },
+    )
+
+    assert result.returncode == 2
+    assert "requires a verified step-1 checkpoint reload" in result.stderr
+
+
 def test_training_launcher_requires_explicit_paid_confirmation():
     result = subprocess.run(
         [

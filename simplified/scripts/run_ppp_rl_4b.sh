@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 [--print-command|--execute] [--steps 1|20|40] [--simulator deterministic|gemini] [--model qwen35|qwen3] [--projected-compute-usd AMOUNT]"
+  echo "Usage: $0 [--print-command|--execute] [--steps 1|2|20|40] [--simulator deterministic|gemini] [--model qwen35|qwen3] [--projected-compute-usd AMOUNT]"
   echo
   echo "The default is --print-command. --execute requires:"
   echo "  CONFIRM_PAID_TRAINING=I_UNDERSTAND_LAMBDA_IS_BILLING"
@@ -50,8 +50,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$steps" != "1" && "$steps" != "20" && "$steps" != "40" ]]; then
-  echo "--steps must be 1, 20, or 40" >&2
+if [[ "$steps" != "1" && "$steps" != "2" && "$steps" != "20" && "$steps" != "40" ]]; then
+  echo "--steps must be 1, 2, 20, or 40" >&2
   exit 2
 fi
 if [[ "$simulator" != "deterministic" && "$simulator" != "gemini" ]]; then
@@ -72,7 +72,7 @@ case "$model" in
     exit 2
     ;;
 esac
-if [[ "$steps" == "1" ]]; then
+if [[ "$steps" == "1" || "$steps" == "2" ]]; then
   run_dir="simplified/results/checkpoints/${model_slug}/compatibility"
   save_frequency="1"
 else
@@ -80,6 +80,37 @@ else
   save_frequency="5"
 fi
 run_dir="${PPP_RUN_DIR:-$run_dir}"
+if [[ "$mode" == "execute" && "$steps" == "2" ]]; then
+  tracker="${run_dir}/latest_checkpointed_iteration.txt"
+  if [[ -n "${PPP_TRAIN_DATA:-}" || -n "${PPP_PREPARED_DIR:-}" ]]; then
+    echo "Step-2 continuation forbids alternate training data or prepared inputs." >&2
+    exit 2
+  fi
+  if [[ ! -f "${run_dir}/resume-verified" ]]; then
+    echo "Step-2 continuation requires a verified step-1 checkpoint reload." >&2
+    exit 2
+  fi
+  if [[ ! -f "$tracker" || "$(tr -d '[:space:]' < "$tracker")" != "1" ]]; then
+    echo "Step-2 continuation requires latest checkpoint step 1." >&2
+    exit 2
+  fi
+  if [[ ! -f "${run_dir}/global_step_1/actor/lora_adapter/adapter_model.safetensors" ]]; then
+    echo "Step-2 continuation requires the step-1 LoRA adapter." >&2
+    exit 2
+  fi
+  if [[ ! -d "${run_dir}/sanitized-trajectories" ]]; then
+    echo "Step-2 continuation requires exactly eight baseline trajectories." >&2
+    exit 2
+  fi
+  baseline_count="$(
+    find "${run_dir}/sanitized-trajectories" -maxdepth 1 -type f \
+      -name '*.json' | wc -l | xargs
+  )"
+  if [[ "$baseline_count" != "8" ]]; then
+    echo "Step-2 continuation requires exactly eight baseline trajectories." >&2
+    exit 2
+  fi
+fi
 if [[ "$simulator" == "gemini" && "$mode" == "execute" && -z "${GEMINI_API_KEY:-}" ]]; then
   echo "GEMINI_API_KEY is required for a live simulator run." >&2
   exit 2
@@ -334,8 +365,29 @@ done
 
 export VERL_FILE_LOGGER_PATH="${run_dir}/training-metrics.jsonl"
 ppp_run_started_at="$(date +%s)"
+baseline_trajectories="0"
+before_adapter_sha256=""
+if [[ "$steps" == "2" ]]; then
+  baseline_trajectories="$(
+    find "${run_dir}/sanitized-trajectories" -maxdepth 1 -type f \
+      -name '*.json' | wc -l | xargs
+  )"
+  before_adapter_sha256="$(
+    sha256sum \
+      "${run_dir}/global_step_1/actor/lora_adapter/adapter_model.safetensors" \
+      | cut -d ' ' -f 1
+  )"
+fi
 "${command[@]}"
 ppp_run_finished_at="$(date +%s)"
+if [[ "$steps" == "2" ]]; then
+  "$ppp_python" -m ppp_simplified.training_cli verify-continuation \
+    --run-dir "$run_dir" \
+    --from-step 1 \
+    --to-step 2 \
+    --baseline-trajectories "$baseline_trajectories" \
+    --expected-before-sha256 "$before_adapter_sha256"
+fi
 if [[ "$resume_noop" == "false" ]]; then
   "$ppp_python" -m ppp_simplified.training_cli summarize-run \
     --run-dir "$run_dir" \

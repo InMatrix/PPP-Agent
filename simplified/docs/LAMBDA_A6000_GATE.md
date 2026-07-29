@@ -151,6 +151,23 @@ ppp-train live-group --model qwen3
 seeds, uses the cached Gemini simulator, and exports only redacted repository
 observations.
 
+When the first optimizer group is flat, verify one effective update before a
+longer run by continuing the ordinary checkpointed dataloader to total step 2:
+
+```bash
+source ~/.config/ppp-agent/gemini.env
+export CONFIRM_PAID_TRAINING=I_UNDERSTAND_LAMBDA_IS_BILLING
+export PPP_HOURLY_USD=2.29
+simplified/.venv-lambda-qwen3/bin/ppp-train train \
+  --steps 2 --simulator gemini --model qwen3 --execute
+```
+
+This bounded mode only accepts the verified `global_step_1` compatibility
+checkpoint and its original prepared inputs. It resumes the saved dataloader
+state, runs exactly the next eight-trajectory group, and rejects success unless
+step 2 has a positive finite gradient norm and a different LoRA adapter hash.
+It does not allow an alternate training parquet or prepared directory.
+
 After the compatibility and live-group gates, start the 20-step run with
 `ppp-train train --steps 20 --simulator gemini --model qwen3 --execute`.
 Rerun that same command once to verify checkpoint resume. A 40-step extension
