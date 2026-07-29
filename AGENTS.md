@@ -21,3 +21,18 @@ The walkthrough should:
 Write the walkthrough for someone learning the codebase. Prefer following one
 concrete request, episode, or execution trace end to end over describing files
 alphabetically.
+
+## Training and compatibility run reports
+
+After every new compatibility, training, or evaluation run, create or update a
+sanitized report under `simplified/docs/run-reports/` using
+`TEMPLATE.md`. Write the report before terminating a paid instance whenever
+possible, and do not start the next paid run until the previous run is
+documented.
+
+Each report should record the tested commit and configuration, real versus
+deterministic or mocked components, stages reached, available timing, memory,
+cost and artifact evidence, the minimal failure and diagnosis, and the
+resulting fix commit once known. Clearly label unavailable evidence and
+inference. Never include credentials, hidden simulator context, raw repository
+contents, or unsanitized observations.

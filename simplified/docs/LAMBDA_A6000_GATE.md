@@ -7,6 +7,11 @@ contact Gemini, or consume a secret.
 The script retains its original `lambda_a6000_gate.sh` filename for command
 compatibility, but now validates A6000, H100, and GH200 hosts explicitly.
 
+Retrospective evidence from the nine GH200 compatibility attempts is indexed
+in [`run-reports/README.md`](run-reports/README.md). Use
+[`run-reports/TEMPLATE.md`](run-reports/TEMPLATE.md) for future attempts so a
+sanitized report is durable before the instance is terminated.
+
 ## Current GH200 gate
 
 The next attempt uses one GH200 96 GB. Its extra HBM gives the colocated actor
