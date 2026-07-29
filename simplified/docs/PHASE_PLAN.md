@@ -1,7 +1,7 @@
 # Small-scale PPP reinforcement-learning phase plan
 
-Last updated: 2026-07-29, after compatibility attempt 13 completed the live
-Gemini group with composite reward variance but zero productivity throughout.
+Last updated: 2026-07-29, after compatibility attempt 14 completed an ordinary
+step-two group but produced a flat clipped reward and no adapter delta.
 
 This is the durable execution plan for the teaching-scale PPP-RL phase. It
 tracks what has actually been proved, what remains uncertain, and the exact
@@ -42,16 +42,17 @@ It is a teaching-scale reproduction, not a performance reproduction.
 ## Current state
 
 - Current branch: `codex/ppp-rl-4b`.
-- Latest tested commit: `b34c0cd`
-  (`Advance phase plan to live simulator gate`).
+- Latest tested commit: `bcf5e5d`
+  (`Add guarded step-two continuation gate`).
 - Retrospective baseline commit: `e01a29a`
   (`Document GH200 compatibility attempts`).
 - Active Lambda instance: one GH200 at the user's request; environment
-  bootstrapped, idle, and retaining the complete step-1 checkpoint.
+  bootstrapped, idle, and retaining the complete step-1 and step-2 checkpoints.
 - Live simulator used in compatibility attempts: yes; five live Gemini calls
   served eleven questions across eight trajectories.
-- Optimizer calls completed: 1; effective nonzero policy updates: 0.
-- Checkpoints written: 1 (`global_step_1`).
+- Optimizer calls completed: 2; effective nonzero policy updates: 0.
+- Checkpoints written: 2 (`global_step_1` and byte-identical
+  `global_step_2` LoRA adapters).
 - Held-out evaluation opened: no.
 
 Attempt 09 completed all eight real Qwen trajectories, overlong masking,
@@ -80,6 +81,14 @@ components were zero and all corrected finishes were empty. The group proves
 that the full composite reward can produce nonzero advantages; it does not yet
 prove a localization-learning signal.
 
+Attempt 14 resumed the ordinary dataloader for exactly one additional group.
+All eight composite rewards were zero after clipping, despite variation in the
+proactivity and personalization components. FoldGRPO advantages, policy loss,
+and gradient norm were zero, so `global_step_2` contains a LoRA adapter
+byte-identical to step 1. A foreground SSH disconnect occurred after the
+checkpoint write and before scalar-file logging and repository verification;
+the complete scalar record was recovered from the Ray worker log.
+
 ## Gate status
 
 | Gate | Acceptance evidence | Status | Evidence |
@@ -90,34 +99,37 @@ prove a localization-learning signal.
 | Old-policy log probabilities | Non-null generated-token log probabilities reach actor preprocessing | Passed | [Attempt 09](run-reports/attempt-09.md) |
 | Adapter-to-trainer schema | Synthetic group contains every FoldGRPO field and invariant | Passed | [Attempt 10](run-reports/attempt-10.md) |
 | FoldGRPO advantages | Finite group-relative advantages for eight trajectories | Passed synthetically and on a flat real-Qwen group | [Attempt 10](run-reports/attempt-10.md), [Attempt 11](run-reports/attempt-11.md) |
-| DAPO backward/optimizer | One finite loss and real LoRA parameter update | Mechanics passed; zero reward variance caused zero gradient and no effective update | [Attempt 11](run-reports/attempt-11.md) |
+| DAPO backward/optimizer | One finite loss and real LoRA parameter update | Mechanics passed twice; both real training groups had zero scalar variance, zero gradient, and no effective update | [Attempt 11](run-reports/attempt-11.md), [Attempt 14](run-reports/attempt-14.md) |
 | Checkpoint save | LoRA adapter and tracker written at step 1 | Passed | [Attempt 11](run-reports/attempt-11.md) |
 | Checkpoint reload/resume | Second guarded command restores step 1 without unintended work | Passed | [Attempt 12](run-reports/attempt-12.md) |
 | Live Gemini group | Eight cached, sanitized trajectories without optimizer work | Passed; composite variance nonzero, productivity flat | [Attempt 13](run-reports/attempt-13.md) |
+| Ordinary step-2 continuation | Exactly eight new trajectories, finite loss/KL, nonzero gradient, changed adapter | Failed: finite KL but flat reward, zero gradient, and identical adapter | [Attempt 14](run-reports/attempt-14.md) |
 | Short training | 20 genuine optimizer updates within phase budget | Not started | Pending |
 | Pre/post evaluation | All episodes scorable across seeds 11, 22, and 33 | Not started | Pending |
 
 ## Exact next gate
 
-Checkpoint save/reload and the live simulator path are now proved. Do not
-launch the 20-step run yet:
+Checkpoint save/reload, live simulation, and a bounded ordinary continuation
+are now proved mechanically. Do not launch the 20-step run through a foreground
+SSH command:
 
-1. Commit and push Attempt 13 plus this plan update.
-2. Add a bounded continuation mode that requests total step 2 in the existing
-   compatibility directory and resumes the ordinary dataloader state.
-3. Test that it cannot hand-pick or repeat a task, preserves group size eight,
-   and records adapter hashes before and after the step.
-4. Run exactly one additional real training group with the frozen composite
-   reward.
-5. Require finite loss/KL, nonzero gradient norm, and a changed adapter hash
-   before claiming the first effective policy update.
-6. If the ordinary next group is also flat, record it without tuning and decide
-   whether the 20-step run itself is the appropriate stochastic gate.
+1. Commit and push Attempt 14 plus this plan update.
+2. Add a detached, reconnectable Lambda launcher with durable PID, start/end,
+   exit-status, and cleanup evidence.
+3. Make each trainer scalar record durable before checkpoint shutdown can
+   interrupt logging.
+4. Test launcher disconnect/reconnect and scalar durability without loading a
+   model.
+5. Treat the 20-step run as the next stochastic learning-signal gate. Do not
+   tune or hand-pick a group; measure the fraction of groups with nonzero final
+   reward variance and effective adapter deltas.
+6. Pause for explicit confirmation before starting that paid run.
 
 ## Subsequent sequence
 
-1. Run the ordinary step-2 continuation and verify a real adapter delta.
-2. Run 20 RL steps.
+1. Harden detached execution and metrics durability.
+2. Run 20 RL steps, retaining flat groups and requiring at least one effective
+   adapter delta before claiming genuine learning.
 3. Extend to 40 only if loss and KL remain finite, at least 25% of groups have
    nonzero reward variance, resume works, and projected phase compute remains
    below $45.
@@ -132,10 +144,10 @@ launch the 20-step run yet:
 Historical exact cost is unavailable because the terminated GH200's ignored
 run directory was not copied off-host. Do not estimate it retroactively.
 
-The current GH200 has `$0.8569` of measured compatibility work before tax:
-`$0.6775` for Attempt 11, `$0.0337` for Attempt 12, and `$0.1457` for Attempt
-13. One-time bootstrap and idle-instance time are not included because their
-exact start/end timestamps were not preserved.
+The current GH200 has `$1.4428` of measured compatibility work before tax:
+`$0.6775` for Attempt 11, `$0.0337` for Attempt 12, `$0.1457` for Attempt 13,
+and `$0.5859` for Attempt 14. One-time bootstrap and idle-instance time are not
+included because their exact start/end timestamps were not preserved.
 
 For every future paid run, record before termination:
 
