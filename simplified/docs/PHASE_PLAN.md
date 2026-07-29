@@ -48,8 +48,9 @@ It is a teaching-scale reproduction, not a performance reproduction.
   (`Document GH200 compatibility attempts`).
 - Active Lambda instance: one GH200 at the user's request; environment
   bootstrapped, idle, and retaining the complete step-1 and step-2 checkpoints.
-- Live simulator used in compatibility attempts: yes; five live Gemini calls
-  served eleven questions across eight trajectories.
+- Live simulator used in compatibility attempts: yes; Attempt 13 used five
+  live Gemini calls for eleven questions, and Attempt 14 used four live calls
+  for four questions.
 - Optimizer calls completed: 2; effective nonzero policy updates: 0.
 - Checkpoints written: 2 (`global_step_1` and byte-identical
   `global_step_2` LoRA adapters).
