@@ -41,6 +41,7 @@ user-simulator quality or trained-agent performance.
 | [10](attempt-10.md) | Synthetic FoldGRPO advantage and DAPO loss | Passed; no model or optimizer used | `2042e01` | Preventive contract gate |
 | [11](attempt-11.md) | Real backward, optimizer, and checkpoint save | Flat zero-reward group; no effective parameter update | Same evidence commit | Learning signal / observability |
 | [12](attempt-12.md) | Full checkpoint reload at completed total | Passed without rollouts, optimization, or report overwrite | `5d5ecec`, `883df51` | Resume semantics |
+| [13](attempt-13.md) | Eight live Qwen/Gemini trajectories | Composite reward varied, but productivity was zero throughout | Pending continuation gate | Reward interpretation |
 
 Attempt 11 completed the first real optimizer call and wrote the first
 checkpoint. Because its eight rewards were all zero, it did not change the
@@ -61,6 +62,11 @@ Attempt 12 proved that the full checkpoint can reload without accidentally
 running step 2. Its
 [`tracked resume result`](artifacts/attempt-12-resume.json) records unchanged
 adapter/report hashes and zero new rollouts.
+
+Attempt 13 exercised the real Gemini UserVille path without constructing an
+optimizer. Its
+[`tracked live-group result`](artifacts/attempt-13-live-gemini.json) separates
+composite reward variance from the all-zero productivity component.
 
 ## Development-process signals
 

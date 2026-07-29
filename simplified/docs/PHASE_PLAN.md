@@ -1,7 +1,7 @@
 # Small-scale PPP reinforcement-learning phase plan
 
-Last updated: 2026-07-29, after compatibility attempt 12 reloaded the complete
-step-1 checkpoint without generating rollouts or running an unintended update.
+Last updated: 2026-07-29, after compatibility attempt 13 completed the live
+Gemini group with composite reward variance but zero productivity throughout.
 
 This is the durable execution plan for the teaching-scale PPP-RL phase. It
 tracks what has actually been proved, what remains uncertain, and the exact
@@ -42,13 +42,14 @@ It is a teaching-scale reproduction, not a performance reproduction.
 ## Current state
 
 - Current branch: `codex/ppp-rl-4b`.
-- Latest tested commit: `883df51`
-  (`Preserve reports during resume probes`).
+- Latest tested commit: `b34c0cd`
+  (`Advance phase plan to live simulator gate`).
 - Retrospective baseline commit: `e01a29a`
   (`Document GH200 compatibility attempts`).
 - Active Lambda instance: one GH200 at the user's request; environment
   bootstrapped, idle, and retaining the complete step-1 checkpoint.
-- Live simulator used in compatibility attempts: no.
+- Live simulator used in compatibility attempts: yes; five live Gemini calls
+  served eleven questions across eight trajectories.
 - Optimizer calls completed: 1; effective nonzero policy updates: 0.
 - Checkpoints written: 1 (`global_step_1`).
 - Held-out evaluation opened: no.
@@ -73,6 +74,12 @@ the requested total was already satisfied. It produced no trajectories,
 optimizer calls, or step-2 checkpoint, preserved the report and adapter hashes,
 and left no GPU process running.
 
+Attempt 13 ran eight base-Qwen trajectories against the live Gemini simulator
+without an optimizer. Total rewards varied from 0 to 0.1, but all productivity
+components were zero and all corrected finishes were empty. The group proves
+that the full composite reward can produce nonzero advantages; it does not yet
+prove a localization-learning signal.
+
 ## Gate status
 
 | Gate | Acceptance evidence | Status | Evidence |
@@ -86,49 +93,49 @@ and left no GPU process running.
 | DAPO backward/optimizer | One finite loss and real LoRA parameter update | Mechanics passed; zero reward variance caused zero gradient and no effective update | [Attempt 11](run-reports/attempt-11.md) |
 | Checkpoint save | LoRA adapter and tracker written at step 1 | Passed | [Attempt 11](run-reports/attempt-11.md) |
 | Checkpoint reload/resume | Second guarded command restores step 1 without unintended work | Passed | [Attempt 12](run-reports/attempt-12.md) |
-| Live Gemini group | Eight cached, sanitized trajectories without optimizer work | Not started | Pending |
+| Live Gemini group | Eight cached, sanitized trajectories without optimizer work | Passed; composite variance nonzero, productivity flat | [Attempt 13](run-reports/attempt-13.md) |
 | Short training | 20 genuine optimizer updates within phase budget | Not started | Pending |
 | Pre/post evaluation | All episodes scorable across seeds 11, 22, and 33 | Not started | Pending |
 
 ## Exact next gate
 
-Checkpoint save and reload are now proved. Before another model-backed command:
+Checkpoint save/reload and the live simulator path are now proved. Do not
+launch the 20-step run yet:
 
-1. Commit and push Attempt 12 plus this plan update.
-2. Configure `GEMINI_API_KEY` only in the active instance's environment; do not
-   copy a local `.env` or persist the key in repository artifacts.
-3. Run one eight-trajectory live Gemini group without optimizer work.
-4. Preserve simulator cache statistics, call counts, decomposed rewards,
-   latency, sanitation evidence, and exact cost.
-5. Review whether the live group has reward variance, but do not tune the
-   frozen agent or select tasks based on the observed outcome.
-6. Only then decide whether the next genuine update should begin the 20-step
-   run or whether a generic learning-signal gate is still required.
+1. Commit and push Attempt 13 plus this plan update.
+2. Add a bounded continuation mode that requests total step 2 in the existing
+   compatibility directory and resumes the ordinary dataloader state.
+3. Test that it cannot hand-pick or repeat a task, preserves group size eight,
+   and records adapter hashes before and after the step.
+4. Run exactly one additional real training group with the frozen composite
+   reward.
+5. Require finite loss/KL, nonzero gradient norm, and a changed adapter hash
+   before claiming the first effective policy update.
+6. If the ordinary next group is also flat, record it without tuning and decide
+   whether the 20-step run itself is the appropriate stochastic gate.
 
 ## Subsequent sequence
 
-1. Run one eight-trajectory live Gemini group without an optimizer update.
-2. Review reward variance, simulator caching, sanitation, latency, memory, and
-   projected cost.
-3. Run 20 RL steps.
-4. Extend to 40 only if loss and KL remain finite, at least 25% of groups have
+1. Run the ordinary step-2 continuation and verify a real adapter delta.
+2. Run 20 RL steps.
+3. Extend to 40 only if loss and KL remain finite, at least 25% of groups have
    nonzero reward variance, resume works, and projected phase compute remains
    below $45.
-5. Evaluate the untrained and trained 4B adapters across inference seeds
+4. Evaluate the untrained and trained 4B adapters across inference seeds
    11, 22, and 33.
-6. Contrast results with the frozen 9B reference without presenting it as an
+5. Contrast results with the frozen 9B reference without presenting it as an
    equivalent control.
-7. Produce the learner notebook trace and final development retrospective.
+6. Produce the learner notebook trace and final development retrospective.
 
 ## Budget and artifact ledger
 
 Historical exact cost is unavailable because the terminated GH200's ignored
 run directory was not copied off-host. Do not estimate it retroactively.
 
-The current GH200 has `$0.7112` of measured compatibility work before tax:
-`$0.6775` for Attempt 11 and `$0.0337` for Attempt 12. One-time bootstrap and
-idle-instance time are not included because their exact start/end timestamps
-were not preserved.
+The current GH200 has `$0.8569` of measured compatibility work before tax:
+`$0.6775` for Attempt 11, `$0.0337` for Attempt 12, and `$0.1457` for Attempt
+13. One-time bootstrap and idle-instance time are not included because their
+exact start/end timestamps were not preserved.
 
 For every future paid run, record before termination:
 
