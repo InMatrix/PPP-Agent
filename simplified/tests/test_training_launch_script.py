@@ -61,6 +61,7 @@ printf 'ray %s\\n' "$*" >> "$PPP_TEST_LOG"
         "PPP_GPU_IDLE_INTERVAL_SECONDS": "0",
         "PPP_TEST_LOG": str(log),
         "PPP_TEST_TRAIN_STATUS": str(training_status),
+        "PPP_HOURLY_USD": "2.29",
     })
     if resolve_runtime_from_path:
         environment["PATH"] = f"{tmp_path}{os.pathsep}{environment['PATH']}"
@@ -208,6 +209,7 @@ def test_paid_launcher_stops_ray_before_and_after_success(tmp_path):
     assert calls.count("ray stop --force") == 2
     assert any("scripts.train_ppp_simplified" in call for call in calls)
     assert any("summarize-run" in call for call in calls)
+    assert any("--hourly-usd 2.29" in call for call in calls)
 
 
 def test_paid_launcher_resolves_ray_from_activated_path(tmp_path):

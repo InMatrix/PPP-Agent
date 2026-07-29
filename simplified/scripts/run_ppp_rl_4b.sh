@@ -199,6 +199,11 @@ if [[ "$mode" == "print" ]]; then
 fi
 
 ppp_python="${PPP_PYTHON:-python3}"
+hourly_usd="${PPP_HOURLY_USD:-1.09}"
+if ! [[ "$hourly_usd" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  echo "PPP_HOURLY_USD must be a non-negative number." >&2
+  exit 2
+fi
 if [[ -n "${PPP_RAY_CLI:-}" ]]; then
   ray_cli="$PPP_RAY_CLI"
 elif [[ "$ppp_python" == */* ]]; then
@@ -301,7 +306,7 @@ ppp_run_finished_at="$(date +%s)"
 "$ppp_python" -m ppp_simplified.training_cli summarize-run \
   --run-dir "$run_dir" \
   --compute-seconds "$((ppp_run_finished_at - ppp_run_started_at))" \
-  --hourly-usd 1.09
+  --hourly-usd "$hourly_usd"
 if [[ "$resume_probe" == "true" ]]; then
   touch "${run_dir}/resume-verified"
 fi
