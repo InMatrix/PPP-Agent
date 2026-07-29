@@ -24,3 +24,6 @@ qwen-vl-utils>=0.0.14
 torchdata>=0.11.0
 torchvision
 tqdm>=4.67.0
+# The vendored agent-loop utility module imports the original repository
+# environment at module load time even though the simplified loop is read-only.
+unidiff==0.7.5

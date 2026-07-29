@@ -89,6 +89,7 @@ def test_lambda_requirements_support_transformers_five():
     assert "safetensors>=0.8.0" in requirements
     assert "safetensors==0.5.3" not in requirements
     assert "ray[default]>=2.48.0,<3" in requirements
+    assert "unidiff==0.7.5" in requirements
 
 
 def test_lambda_doctor_checks_the_exact_async_rollout_contract():
