@@ -40,6 +40,7 @@ user-simulator quality or trained-agent performance.
 | [09](attempt-09.md) | FoldGRPO advantage entry after actor preprocessing | Missing group `uid` | `139e5d3` | Grouping/schema contract |
 | [10](attempt-10.md) | Synthetic FoldGRPO advantage and DAPO loss | Passed; no model or optimizer used | `2042e01` | Preventive contract gate |
 | [11](attempt-11.md) | Real backward, optimizer, and checkpoint save | Flat zero-reward group; no effective parameter update | Same evidence commit | Learning signal / observability |
+| [12](attempt-12.md) | Full checkpoint reload at completed total | Passed without rollouts, optimization, or report overwrite | `5d5ecec`, `883df51` | Resume semantics |
 
 Attempt 11 completed the first real optimizer call and wrote the first
 checkpoint. Because its eight rewards were all zero, it did not change the
@@ -55,6 +56,11 @@ Attempt 11's LoRA adapter and sanitized evidence bundle are also preserved in
 the ignored local results directory. Its compact
 [`tracked result`](artifacts/attempt-11-one-step.json) contains hashes and
 aggregate metrics without prompts, repository observations, or trajectory IDs.
+
+Attempt 12 proved that the full checkpoint can reload without accidentally
+running step 2. Its
+[`tracked resume result`](artifacts/attempt-12-resume.json) records unchanged
+adapter/report hashes and zero new rollouts.
 
 ## Development-process signals
 

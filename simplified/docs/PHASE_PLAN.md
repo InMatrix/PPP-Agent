@@ -1,7 +1,7 @@
 # Small-scale PPP reinforcement-learning phase plan
 
-Last updated: 2026-07-29, after compatibility attempt 11 completed the first
-real backward, optimizer, and checkpoint-save path with a flat reward group.
+Last updated: 2026-07-29, after compatibility attempt 12 reloaded the complete
+step-1 checkpoint without generating rollouts or running an unintended update.
 
 This is the durable execution plan for the teaching-scale PPP-RL phase. It
 tracks what has actually been proved, what remains uncertain, and the exact
@@ -42,12 +42,12 @@ It is a teaching-scale reproduction, not a performance reproduction.
 ## Current state
 
 - Current branch: `codex/ppp-rl-4b`.
-- Latest tested commit: `2b6bb1d`
-  (`Record instance-specific training cost`).
+- Latest tested commit: `883df51`
+  (`Preserve reports during resume probes`).
 - Retrospective baseline commit: `e01a29a`
   (`Document GH200 compatibility attempts`).
 - Active Lambda instance: one GH200 at the user's request; environment
-  bootstrapped and ready for the bounded deterministic one-step gate.
+  bootstrapped, idle, and retaining the complete step-1 checkpoint.
 - Live simulator used in compatibility attempts: no.
 - Optimizer calls completed: 1; effective nonzero policy updates: 0.
 - Checkpoints written: 1 (`global_step_1`).
@@ -68,6 +68,11 @@ loss, gradient norm, and effective LoRA update were zero. The step-1
 checkpoint and LoRA adapter were saved. The adapter and sanitized evidence are
 durable locally; the full actor/optimizer state remains on the active GH200.
 
+Attempt 12 loaded that full state, restored global step 1, and exited because
+the requested total was already satisfied. It produced no trajectories,
+optimizer calls, or step-2 checkpoint, preserved the report and adapter hashes,
+and left no GPU process running.
+
 ## Gate status
 
 | Gate | Acceptance evidence | Status | Evidence |
@@ -80,24 +85,25 @@ durable locally; the full actor/optimizer state remains on the active GH200.
 | FoldGRPO advantages | Finite group-relative advantages for eight trajectories | Passed synthetically and on a flat real-Qwen group | [Attempt 10](run-reports/attempt-10.md), [Attempt 11](run-reports/attempt-11.md) |
 | DAPO backward/optimizer | One finite loss and real LoRA parameter update | Mechanics passed; zero reward variance caused zero gradient and no effective update | [Attempt 11](run-reports/attempt-11.md) |
 | Checkpoint save | LoRA adapter and tracker written at step 1 | Passed | [Attempt 11](run-reports/attempt-11.md) |
-| Checkpoint reload/resume | Second guarded command resumes from step 1 | Not proved | Pending |
+| Checkpoint reload/resume | Second guarded command restores step 1 without unintended work | Passed | [Attempt 12](run-reports/attempt-12.md) |
 | Live Gemini group | Eight cached, sanitized trajectories without optimizer work | Not started | Pending |
 | Short training | 20 genuine optimizer updates within phase budget | Not started | Pending |
 | Pre/post evaluation | All episodes scorable across seeds 11, 22, and 33 | Not started | Pending |
 
 ## Exact next gate
 
-Attempt 11's evidence is durable. Before another model-backed command:
+Checkpoint save and reload are now proved. Before another model-backed command:
 
-1. Fix and test the empty scalar-metrics file and automatic post-run summary
-   behavior without changing RL semantics.
-2. Commit and push that fix together with this report and plan update.
-3. Run a bounded checkpoint reload/resume probe against `global_step_1`.
-4. Preserve exact load evidence and verify configuration identity.
-5. Do not claim a policy update until an ordinary real training group has
-   nonzero reward variance, a nonzero gradient, and a measured adapter delta.
-6. Keep the prompts, reward, navigation tools, group size, and selection
-   procedure frozen; do not hand-pick an easier group to manufacture success.
+1. Commit and push Attempt 12 plus this plan update.
+2. Configure `GEMINI_API_KEY` only in the active instance's environment; do not
+   copy a local `.env` or persist the key in repository artifacts.
+3. Run one eight-trajectory live Gemini group without optimizer work.
+4. Preserve simulator cache statistics, call counts, decomposed rewards,
+   latency, sanitation evidence, and exact cost.
+5. Review whether the live group has reward variance, but do not tune the
+   frozen agent or select tasks based on the observed outcome.
+6. Only then decide whether the next genuine update should begin the 20-step
+   run or whether a generic learning-signal gate is still required.
 
 ## Subsequent sequence
 
@@ -119,6 +125,11 @@ Attempt 11's evidence is durable. Before another model-backed command:
 
 Historical exact cost is unavailable because the terminated GH200's ignored
 run directory was not copied off-host. Do not estimate it retroactively.
+
+The current GH200 has `$0.7112` of measured compatibility work before tax:
+`$0.6775` for Attempt 11 and `$0.0337` for Attempt 12. One-time bootstrap and
+idle-instance time are not included because their exact start/end timestamps
+were not preserved.
 
 For every future paid run, record before termination:
 

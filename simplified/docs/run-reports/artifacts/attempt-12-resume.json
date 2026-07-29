@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "stage": "checkpoint_reload_resume",
+  "status": "passed_noop",
+  "git_commit": "883df51b3624c4f12249d12a17ca813249cb051f",
+  "hardware": "NVIDIA GH200 96 GB",
+  "hourly_usd": 2.29,
+  "run_start_utc": "2026-07-29T05:34:04Z",
+  "resume_marker_utc": "2026-07-29T05:34:56.730180Z",
+  "compute_seconds": 53,
+  "estimated_compute_usd": 0.03371388888888889,
+  "loaded_checkpoint_step": 1,
+  "requested_total_steps": 1,
+  "new_rollouts": 0,
+  "new_optimizer_steps": 0,
+  "new_checkpoint_written": false,
+  "global_step_2_absent": true,
+  "gpu_processes_after_cleanup": 0,
+  "artifacts_unchanged": {
+    "lora_adapter_sha256": "833506233639b7b104183539f28112a4b694ce0e37f3d23978feeaa554906f46",
+    "sanitized_report_sha256": "7984cd851268e9e13258a8f9877b0c121bd2157a4e2f5ad9e9d5d53590013cf3"
+  },
+  "durable_local_log_sha256": "1eebce709aa0a8147963d76d77ba8925b8683ca9e6526364bdd762871df0a055"
+}
