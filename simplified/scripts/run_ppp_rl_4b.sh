@@ -304,8 +304,16 @@ fi
 
 prepared_dir="${PPP_PREPARED_DIR:-simplified/results/training/prepared}"
 resume_probe="false"
+resume_noop="false"
 if compgen -G "${run_dir}/global_step_*" >/dev/null; then
   resume_probe="true"
+  tracker="${run_dir}/latest_checkpointed_iteration.txt"
+  if [[ -f "$tracker" ]]; then
+    completed_step="$(tr -d '[:space:]' < "$tracker")"
+    if [[ "$completed_step" =~ ^[0-9]+$ ]] && ((completed_step >= steps)); then
+      resume_noop="true"
+    fi
+  fi
 fi
 for immutable in training-config.json training-subset.json; do
   source_file="${prepared_dir}/${immutable}"
@@ -328,10 +336,14 @@ export VERL_FILE_LOGGER_PATH="${run_dir}/training-metrics.jsonl"
 ppp_run_started_at="$(date +%s)"
 "${command[@]}"
 ppp_run_finished_at="$(date +%s)"
-"$ppp_python" -m ppp_simplified.training_cli summarize-run \
-  --run-dir "$run_dir" \
-  --compute-seconds "$((ppp_run_finished_at - ppp_run_started_at))" \
-  --hourly-usd "$hourly_usd"
+if [[ "$resume_noop" == "false" ]]; then
+  "$ppp_python" -m ppp_simplified.training_cli summarize-run \
+    --run-dir "$run_dir" \
+    --compute-seconds "$((ppp_run_finished_at - ppp_run_started_at))" \
+    --hourly-usd "$hourly_usd"
+else
+  echo "Checkpoint reload verified; preserving the completed run report."
+fi
 if [[ "$resume_probe" == "true" ]]; then
   touch "${run_dir}/resume-verified"
 fi

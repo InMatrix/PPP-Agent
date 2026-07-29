@@ -18,6 +18,7 @@ def _run_guarded_launcher(
     training_status: int = 0,
     busy_gpu: bool = False,
     resolve_runtime_from_path: bool = False,
+    completed_step: int | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     prepared = tmp_path / "prepared"
     prepared.mkdir()
@@ -63,6 +64,12 @@ printf 'ray %s\\n' "$*" >> "$PPP_TEST_LOG"
         "PPP_TEST_TRAIN_STATUS": str(training_status),
         "PPP_HOURLY_USD": "2.29",
     })
+    if completed_step is not None:
+        run_dir = Path(environment["PPP_RUN_DIR"])
+        (run_dir / f"global_step_{completed_step}").mkdir(parents=True)
+        (run_dir / "latest_checkpointed_iteration.txt").write_text(
+            f"{completed_step}\n"
+        )
     if resolve_runtime_from_path:
         environment["PATH"] = f"{tmp_path}{os.pathsep}{environment['PATH']}"
     else:
@@ -230,6 +237,15 @@ def test_paid_launcher_stops_ray_after_training_failure(tmp_path):
     assert calls.count("ray stop --force") == 2
     assert any("scripts.train_ppp_simplified" in call for call in calls)
     assert not any("summarize-run" in call for call in calls)
+
+
+def test_completed_resume_preserves_original_report(tmp_path):
+    result, calls = _run_guarded_launcher(tmp_path, completed_step=1)
+
+    assert result.returncode == 0
+    assert not any("summarize-run" in call for call in calls)
+    assert (tmp_path / "run/resume-verified").is_file()
+    assert "preserving the completed run report" in result.stdout
 
 
 def test_paid_launcher_refuses_busy_gpu_after_cleanup(tmp_path):
