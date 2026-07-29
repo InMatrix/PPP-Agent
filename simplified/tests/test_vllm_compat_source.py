@@ -41,6 +41,18 @@ def test_vllm_utility_imports_support_version_012_modules():
     assert "initialize_app_state(" in source
 
 
+def test_external_zmq_executor_honors_vllm_non_blocking_execution():
+    source = (
+        ROOT / "verl/workers/rollout/vllm_rollout/vllm_async_server.py"
+    ).read_text()
+
+    assert "self.future_executor = ThreadPoolExecutor(" in source
+    assert "def execute_model(self, scheduler_output, non_block: bool = False):" in source
+    assert "if non_block:" in source
+    assert "return self.future_executor.submit(execute_first)" in source
+    assert '"execute_model",' in source
+
+
 def test_request_logging_uses_current_positive_flag():
     args = SimpleNamespace(enable_log_requests=True)
 

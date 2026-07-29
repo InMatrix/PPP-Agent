@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pprint import pprint
 from typing import Any, Callable, Optional
 
@@ -82,6 +83,14 @@ class ExternalZeroMQDistributedExecutor(Executor):
         addresses = os.environ["VERL_VLLM_ZMQ_ADDRESSES"].split(",")
         addresses = addresses[dp_rank_local * tp_size : (dp_rank_local + 1) * tp_size]
         self.context = zmq.Context()
+        # vLLM 0.12's EngineCore requests non-blocking execution and calls
+        # Future.result() immediately afterward. Keep the existing ordered
+        # ZeroMQ protocol, but perform its blocking receive on one helper
+        # thread so execute_model can honor that interface.
+        self.future_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="verl-vllm-zmq",
+        )
         self.sockets = []
         for address in addresses:
             socket = self.context.socket(zmq.REQ)
@@ -127,6 +136,17 @@ class ExternalZeroMQDistributedExecutor(Executor):
             if isinstance(output, Exception):
                 raise output
         return outputs
+
+    def execute_model(self, scheduler_output, non_block: bool = False):
+        def execute_first():
+            return self.collective_rpc(
+                "execute_model",
+                args=(scheduler_output,),
+            )[0]
+
+        if non_block:
+            return self.future_executor.submit(execute_first)
+        return execute_first()
 
     def check_health(self):
         return
