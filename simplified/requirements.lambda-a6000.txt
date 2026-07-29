@@ -1,4 +1,4 @@
-# Initial, reproducible Python layer for the A6000 compatibility gate.
+# Reproducible Python layer for the Lambda single-GPU compatibility gate.
 #
 # The bootstrap script installs the selected vLLM stack first because its wheel
 # constrains PyTorch and Transformers. These are the remaining dependencies

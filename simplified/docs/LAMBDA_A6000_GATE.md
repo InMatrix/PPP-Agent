@@ -1,65 +1,94 @@
-# Lambda A6000 compatibility gate
+# Lambda single-GPU compatibility gate
 
 This runbook prepares a GPU host for the first PPP reinforcement-learning
 compatibility check. It does **not** launch Lambda infrastructure, run a model,
 contact Gemini, or consume a secret.
 
-## Before launching
+The script retains its original `lambda_a6000_gate.sh` filename for command
+compatibility, but now validates A6000, H100, and GH200 hosts explicitly.
+
+## Current GH200 gate
+
+The next attempt uses one GH200 96 GB. Its extra HBM gives the colocated actor
+and rollout stack more headroom than the 80 GB H100 probe, while its Grace CPU
+changes the host architecture from x86-64 to ARM64. Treat this as a fresh
+package-compatibility result; do not copy the previous H100 virtual
+environment.
 
 Keep the repository on `codex/ppp-rl-4b` and ensure it is pushed or otherwise
-available to the GPU host. Add an SSH public key in Lambda, then manually
-launch one A6000 48 GB instance. Do not launch an H100 yet.
-
-The gate is capped at two hours and $3 of compute. Set a local timer before
-connecting. Lambda bills a running instance even when no command is active, so
-terminate it manually in the Lambda console as soon as the gate passes or
-fails.
+available to the GPU host. Set a one-hour timer. Lambda bills a running
+instance even when no command is active, so terminate it manually as soon as
+the gate passes or fails.
 
 ## Host setup
 
-From the A6000 host, clone the desired branch and run the primary bootstrap:
+From the GH200 host, first inspect the base image:
+
+```bash
+uname -m
+nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
+python3.11 --version
+```
+
+Expected results are `aarch64`, a GPU name containing `GH200`, at least 90,000
+MiB of GPU memory, and Python 3.11. Then clone and bootstrap the Qwen3 fallback
+stack that passed the earlier API-compatibility work:
 
 ```bash
 git clone <YOUR_PPP_AGENT_REMOTE> PPP-Agent
 cd PPP-Agent
 git switch codex/ppp-rl-4b
 sudo apt-get install -y python3.11-dev
-bash simplified/scripts/lambda_a6000_gate.sh --bootstrap --model qwen35
+bash simplified/scripts/lambda_a6000_gate.sh \
+  --bootstrap \
+  --accelerator gh200 \
+  --model qwen3 \
+  --venv simplified/.venv-lambda-qwen3
 ```
 
-The script creates `simplified/.venv-lambda` and installs the simplified agent
-plus a pinned Qwen3.5 compatibility stack. The vendored `verl/` source has no
-independent package manifest, so the script exports the repository root
+Hardware validation runs before any package download. Every registry
+dependency is installed with `--only-binary=:all:`. If ARM64 lacks a required
+wheel, pip must fail rather than begin a paid source compilation. Save that
+error, terminate the instance, and decide separately whether a documented
+container or source-build path is worthwhile.
+
+The script creates `simplified/.venv-lambda-qwen3`. The vendored `verl/` source
+has no independent package manifest, so the script exports the repository root
 through `PYTHONPATH` instead of pretending it is a published dependency.
 
-The primary stack uses `vllm==0.21.0` and Transformers 5. vLLM's compiled wheel
-selects its matching PyTorch package. This is intentional: the compiled
-vLLM/PyTorch pair is the binding dependency. A failed primary gate is a
-compatibility result—not permission to patch the algorithm or reduce the
-rollout group.
+This gate uses `vllm==0.12.0` and Transformers 4.x with
+`Qwen/Qwen3-4B`. vLLM's compiled wheel selects its matching PyTorch package.
+This is intentional: the compiled vLLM/PyTorch pair is the binding dependency.
+A failed gate is a compatibility result—not permission to patch the algorithm
+or reduce the rollout group.
 
 To rerun only read-only host checks:
 
 ```bash
-bash simplified/scripts/lambda_a6000_gate.sh --doctor --model qwen35
+bash simplified/scripts/lambda_a6000_gate.sh \
+  --doctor \
+  --accelerator gh200 \
+  --model qwen3 \
+  --venv simplified/.venv-lambda-qwen3
 ```
 
-The doctor prints GPU model, memory, and driver information; checks for at
-least 46 GiB; confirms CUDA is visible to PyTorch; and imports vLLM and the
-training layer. Bootstrap also runs `pip check`. Neither command reads `.env`
-or `GEMINI_API_KEY`.
+The doctor prints host architecture, GPU model, memory, and driver
+information; checks for at least 90,000 MiB; confirms CUDA is visible to
+PyTorch; and imports the exact asynchronous vLLM/Verl path used during
+training. Bootstrap also runs `pip check`. Neither command reads `.env` or
+`GEMINI_API_KEY`.
 
 ## Run the gates
 
 Prepare the frozen data and inspect the exact training command:
 
 ```bash
-simplified/.venv-lambda/bin/ppp-train doctor
-simplified/.venv-lambda/bin/ppp-train prepare
+simplified/.venv-lambda-qwen3/bin/ppp-train doctor
+simplified/.venv-lambda-qwen3/bin/ppp-train prepare
 
 # Print only; this does not construct an optimizer.
-simplified/.venv-lambda/bin/ppp-train train \
-  --steps 1 --simulator deterministic --model qwen35
+simplified/.venv-lambda-qwen3/bin/ppp-train train \
+  --steps 1 --simulator deterministic --model qwen3
 ```
 
 Only after explicit paid-run confirmation, execute the one-step compatibility
@@ -67,8 +96,8 @@ gate:
 
 ```bash
 export CONFIRM_PAID_TRAINING=I_UNDERSTAND_LAMBDA_IS_BILLING
-simplified/.venv-lambda/bin/ppp-train train \
-  --steps 1 --simulator deterministic --model qwen35 --execute
+simplified/.venv-lambda-qwen3/bin/ppp-train train \
+  --steps 1 --simulator deterministic --model qwen3 --execute
 ```
 
 That command must complete a model forward/generation pass, eight sequential
@@ -95,9 +124,9 @@ server in one terminal, then use the no-optimizer live-group command in a
 second terminal:
 
 ```bash
-vllm serve Qwen/Qwen3.5-4B \
-  --language-model-only --max-model-len 10240 --gpu-memory-utilization 0.35
-ppp-train live-group --model qwen35
+vllm serve Qwen/Qwen3-4B \
+  --max-model-len 10240 --gpu-memory-utilization 0.20
+ppp-train live-group --model qwen3
 ```
 
 `live-group` produces exactly eight trajectories with distinct inference
@@ -105,35 +134,33 @@ seeds, uses the cached Gemini simulator, and exports only redacted repository
 observations.
 
 After the compatibility and live-group gates, start the 20-step run with
-`ppp-train train --steps 20 --simulator gemini --model qwen35 --execute`.
+`ppp-train train --steps 20 --simulator gemini --model qwen3 --execute`.
 Rerun that same command once to verify checkpoint resume. A 40-step extension
 also requires `--projected-compute-usd AMOUNT`; the launcher refuses it unless
 the saved report shows at least 25% non-flat groups, loss and KL are finite, a
 LoRA adapter exists, resume was verified, and projected phase compute is at
 most $45.
 
-## Qwen3 fallback
+## Qwen3.5 primary-stack retry
 
-If Qwen3.5 fails because the vendored Verl path cannot use its new hybrid
-architecture, first save the traceback and package versions. Then create a
-fresh fallback environment and repeat the same A6000 gate:
+Qwen3 is the current bounded fallback after Qwen3.5 compatibility work. Do not
+retry the newer hybrid architecture during the GH200 memory gate. If a later
+Qwen3.5 retry is approved, create a separate environment:
 
 ```bash
 bash simplified/scripts/lambda_a6000_gate.sh \
-  --bootstrap --model qwen3 --venv simplified/.venv-lambda-qwen3
-export CONFIRM_PAID_TRAINING=I_UNDERSTAND_LAMBDA_IS_BILLING
-simplified/.venv-lambda-qwen3/bin/ppp-train train \
-  --steps 1 --simulator deterministic --model qwen3 --execute
+  --bootstrap \
+  --accelerator gh200 \
+  --model qwen35 \
+  --venv simplified/.venv-lambda-qwen35
 ```
 
-The fallback pins vLLM 0.12.0, matching Verl 0.7.0, and Transformers 4.x. Do not mix primary and
-fallback packages in one virtual environment. The bootstrap script refuses to
-reuse an existing virtual environment; select a new `--venv` path for each
-fresh compatibility attempt.
+Do not mix primary and fallback packages in one virtual environment. The
+bootstrap script refuses to reuse an existing environment.
 
-## H100 fallback
+## Historical A6000 and H100 evidence
 
-Stop the A6000 attempt and record its doctor and training output if:
+The original A6000 gate defined these escalation conditions:
 
 - actor plus rollout components cannot load safely;
 - peak allocated memory exceeds 46 GiB;
@@ -142,8 +169,9 @@ Stop the A6000 attempt and record its doctor and training output if:
   documented CPU offload; or
 - fitting requires reducing the eight-rollout group or changing FoldGRPO.
 
-Only then launch one H100 80 GB and repeat the same gate. Do not solve a memory
-failure by weakening the eight-rollout learning objective.
+The historical plan selected an H100 after A6000 availability and memory
+constraints. The current GH200 gate supersedes that hardware choice without
+weakening the eight-rollout learning objective.
 
 The first H100 fallback probe showed that a colocated Qwen3-4B actor left about
 20 GiB free. vLLM interprets `gpu_memory_utilization` against total device

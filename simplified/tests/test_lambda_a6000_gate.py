@@ -16,6 +16,7 @@ def test_lambda_gate_help_is_local_and_describes_both_model_modes():
     )
     assert result.returncode == 0
     assert "--model qwen35|qwen3" in result.stdout
+    assert "--accelerator a6000|h100|gh200" in result.stdout
     assert "does not launch, stop" in result.stdout
 
 
@@ -38,6 +39,36 @@ def test_lambda_gate_keeps_distinct_rollout_stacks():
     assert 'vllm_version="0.12.0"' in source
     assert 'transformers_requirement="transformers>=4.51,<5"' in source
     assert 'maximum 2 hours / \\$3 compute' in source
+
+
+def test_lambda_gate_rejects_unknown_accelerator_before_host_probe():
+    result = subprocess.run(
+        [
+            "bash",
+            str(SCRIPT),
+            "--doctor",
+            "--accelerator",
+            "unknown",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "--accelerator must be a6000, h100, or gh200" in result.stderr
+
+
+def test_gh200_gate_is_arm64_and_binary_wheel_only():
+    source = SCRIPT.read_text()
+
+    assert 'if [[ "$accelerator" == "gh200" && "$host_arch" != "aarch64" ]]' in source
+    assert 'minimum_gpu_memory_mib=90000' in source
+    assert 'expected_gpu_name="GH200"' in source
+    assert source.count("--only-binary=:all:") == 4
+    assert source.index('command -v nvidia-smi') < source.index(
+        'if [[ "$mode" == "bootstrap" ]]'
+    )
 
 
 def test_lambda_requirements_support_transformers_five():
