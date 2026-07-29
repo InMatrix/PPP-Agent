@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import shutil
 import subprocess
@@ -24,6 +25,18 @@ class RepositoryWorkspace:
 
     def prepare(self, episode: Episode) -> Path:
         target = self.path_for(episode)
+        # Verl expands one prompt into eight concurrent rollouts. They share
+        # the same pinned repository snapshot, so serialize its first fetch
+        # across threads and Ray worker processes. The marker remains the
+        # source of truth after the lock is acquired.
+        lock_dir = self.root / ".locks"
+        lock_dir.mkdir(parents=True, exist_ok=True)
+        lock_path = lock_dir / f"{target.name}.lock"
+        with lock_path.open("a+") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            return self._prepare_locked(episode, target)
+
+    def _prepare_locked(self, episode: Episode, target: Path) -> Path:
         marker = target / ".ppp-snapshot.json"
         expected = {
             "repository": episode.repository,
