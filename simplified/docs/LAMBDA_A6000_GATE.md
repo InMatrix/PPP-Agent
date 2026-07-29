@@ -59,8 +59,17 @@ has no independent package manifest, so the script exports the repository root
 through `PYTHONPATH` instead of pretending it is a published dependency.
 
 This gate uses `vllm==0.12.0` and Transformers 4.x with
-`Qwen/Qwen3-4B`. vLLM's compiled wheel selects its matching PyTorch package.
-This is intentional: the compiled vLLM/PyTorch pair is the binding dependency.
+`Qwen/Qwen3-4B`. PyPI resolves vLLM's ARM64 dependency to a CPU-only PyTorch
+wheel, so the GH200 path immediately replaces it with the ABI-matching
+`torch==2.9.0+cu128` stack from PyTorch's official CUDA 12.8 index. This keeps
+the compiled vLLM/PyTorch pair aligned without compiling either package.
+
+NVIDIA's `nvidia-cusparselt-cu12==0.7.1` ARM64 wheel contains an internal SBSA
+tag even though its download is labeled AArch64. `pip check` reports that
+single package as unsupported. The bootstrap accepts only that exact warning,
+only on GH200, and only after finding the installed `libcusparseLt.so.0`.
+Every other dependency warning remains fatal.
+
 A failed gate is a compatibility result—not permission to patch the algorithm
 or reduce the rollout group.
 

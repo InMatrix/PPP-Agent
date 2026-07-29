@@ -149,13 +149,42 @@ PY
   # release install the matching PyTorch build. Requiring wheels prevents an
   # ARM64 host from silently spending paid time compiling a missing package.
   "$venv_dir/bin/python" -m pip install --only-binary=:all: "vllm==$vllm_version" "$transformers_requirement"
+  if [[ "$accelerator" == "gh200" && "$model" == "qwen3" ]]; then
+    # PyPI's ARM64 torch 2.9 wheel is CPU-only. The official PyTorch CUDA index
+    # publishes the ABI-compatible GH200 build plus its ARM64 CUDA libraries.
+    "$venv_dir/bin/python" -m pip install --only-binary=:all: \
+      --index-url https://download.pytorch.org/whl/cu128 \
+      torch==2.9.0+cu128 torchvision==0.24.0 torchaudio==2.9.0
+  fi
   # Hydra 1.3.2 pins antlr4-python3-runtime 4.9.*, for which PyPI publishes no
   # wheel. This audited package is pure Python; install it without dependencies
   # as the sole source-archive exception before restoring the wheel-only rule.
   "$venv_dir/bin/python" -m pip install --no-deps --no-binary=:all: antlr4-python3-runtime==4.9.3
   "$venv_dir/bin/python" -m pip install --only-binary=:all: -r "$repo_root/simplified/requirements.lambda-a6000.txt"
   "$venv_dir/bin/python" -m pip install --only-binary=:all: -e "$repo_root/simplified[test,gemini]"
-  "$venv_dir/bin/python" -m pip check
+  pip_check_status=0
+  pip_check_output="$("$venv_dir/bin/python" -m pip check 2>&1)" || pip_check_status=$?
+  if [[ "$pip_check_status" -ne 0 ]]; then
+    # NVIDIA's 0.7.1 ARM64 wheel contains an SBSA tag internally even though
+    # the CUDA index serves it as aarch64. pip check rejects that metadata.
+    # Accept only this exact warning and only when the shared library exists.
+    known_cusparselt_warning="nvidia-cusparselt-cu12 0.7.1 is not supported on this platform"
+    unexpected_check_output="$(
+      printf '%s\n' "$pip_check_output" |
+        grep -Fvx "$known_cusparselt_warning" || true
+    )"
+    cusparselt_library="$(
+      find "$venv_dir/lib" -path '*/nvidia/cusparselt/lib/libcusparseLt.so.0' -print -quit
+    )"
+    if [[ "$accelerator" == "gh200" &&
+          -n "$cusparselt_library" &&
+          -z "$unexpected_check_output" ]]; then
+      echo "WARN: accepted NVIDIA ARM64 cuSPARSELt wheel-tag mismatch: $cusparselt_library" >&2
+    else
+      printf '%s\n' "$pip_check_output" >&2
+      exit "$pip_check_status"
+    fi
+  fi
 fi
 
 echo "Repository: $repo_root"
