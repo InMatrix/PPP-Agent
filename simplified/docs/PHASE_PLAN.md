@@ -1,7 +1,7 @@
 # Small-scale PPP reinforcement-learning phase plan
 
-Last updated: 2026-07-29, after compatibility attempt 14 completed an ordinary
-step-two group but produced a flat clipped reward and no adapter delta.
+Last updated: 2026-07-29, after the offline run-lifecycle and metrics-durability
+fixes following compatibility attempt 14.
 
 This is the durable execution plan for the teaching-scale PPP-RL phase. It
 tracks what has actually been proved, what remains uncertain, and the exact
@@ -42,12 +42,13 @@ It is a teaching-scale reproduction, not a performance reproduction.
 ## Current state
 
 - Current branch: `codex/ppp-rl-4b`.
-- Latest tested commit: `bcf5e5d`
+- Latest live-tested commit: `bcf5e5d`
   (`Add guarded step-two continuation gate`).
+- Latest offline-verified change: detached run management and pre-checkpoint
+  scalar durability; 109 simplified tests pass.
 - Retrospective baseline commit: `e01a29a`
   (`Document GH200 compatibility attempts`).
-- Active Lambda instance: one GH200 at the user's request; environment
-  bootstrapped, idle, and retaining the complete step-1 and step-2 checkpoints.
+- Active Lambda instance: none; the user terminated the GH200 after Attempt 14.
 - Live simulator used in compatibility attempts: yes; Attempt 13 used five
   live Gemini calls for eleven questions, and Attempt 14 used four live calls
   for four questions.
@@ -90,6 +91,14 @@ byte-identical to step 1. A foreground SSH disconnect occurred after the
 checkpoint write and before scalar-file logging and repository verification;
 the complete scalar record was recovered from the Ray worker log.
 
+The subsequent offline fix adds a `start`/`status`/`logs` controller whose
+worker is detached from SSH and whose immutable run directory records PID,
+timestamps, exit code, cleanup result, and post-cleanup GPU state. Verl now
+fsyncs a scalar snapshot before checkpoint serialization and writes the normal
+complete record afterward. Offline tests exercise successful and failed
+detached workers, caller exit, reconnectable status/logs, unsafe and duplicate
+run IDs, key non-persistence, cleanup evidence, and log/checkpoint ordering.
+
 ## Gate status
 
 | Gate | Acceptance evidence | Status | Evidence |
@@ -105,32 +114,32 @@ the complete scalar record was recovered from the Ray worker log.
 | Checkpoint reload/resume | Second guarded command restores step 1 without unintended work | Passed | [Attempt 12](run-reports/attempt-12.md) |
 | Live Gemini group | Eight cached, sanitized trajectories without optimizer work | Passed; composite variance nonzero, productivity flat | [Attempt 13](run-reports/attempt-13.md) |
 | Ordinary step-2 continuation | Exactly eight new trajectories, finite loss/KL, nonzero gradient, changed adapter | Failed: finite KL but flat reward, zero gradient, and identical adapter | [Attempt 14](run-reports/attempt-14.md) |
+| Detached run lifecycle | SSH-independent worker with durable PID, status, exit, log, and cleanup evidence | Passed offline; live observation pending | Detached-controller tests and Lambda runbook |
+| Pre-checkpoint scalar durability | Loss, gradient, and KL survive interruption after checkpoint save | Passed offline; live observation pending | File-logger and ordering tests |
 | Short training | 20 genuine optimizer updates within phase budget | Not started | Pending |
 | Pre/post evaluation | All episodes scorable across seeds 11, 22, and 33 | Not started | Pending |
 
 ## Exact next gate
 
-Checkpoint save/reload, live simulation, and a bounded ordinary continuation
-are now proved mechanically. Do not launch the 20-step run through a foreground
-SSH command:
+Checkpoint save/reload, live simulation, bounded continuation, detached
+execution, and pre-checkpoint logging are now proved at their appropriate
+offline or live boundaries:
 
-1. Commit and push Attempt 14 plus this plan update.
-2. Add a detached, reconnectable Lambda launcher with durable PID, start/end,
-   exit-status, and cleanup evidence.
-3. Make each trainer scalar record durable before checkpoint shutdown can
-   interrupt logging.
-4. Test launcher disconnect/reconnect and scalar durability without loading a
-   model.
-5. Treat the 20-step run as the next stochastic learning-signal gate. Do not
-   tune or hand-pick a group; measure the fraction of groups with nonzero final
-   reward variance and effective adapter deltas.
-6. Pause for explicit confirmation before starting that paid run.
+1. Keep the Lambda instance terminated until the user is ready for paid work.
+2. On a fresh instance, run the focused offline lifecycle tests and verify the
+   instance-local Gemini key without printing it.
+3. Pause for explicit confirmation before starting paid compute.
+4. Start the 20-step job through the detached controller and deliberately
+   disconnect/reconnect once to verify live lifecycle behavior.
+5. Treat the 20-step run as the stochastic learning-signal gate. Do not tune or
+   hand-pick a group; measure the fraction of groups with nonzero final reward
+   variance and effective adapter deltas.
 
 ## Subsequent sequence
 
-1. Harden detached execution and metrics durability.
-2. Run 20 RL steps, retaining flat groups and requiring at least one effective
+1. Run 20 RL steps, retaining flat groups and requiring at least one effective
    adapter delta before claiming genuine learning.
+2. Verify checkpoint resume through a second detached lifecycle run.
 3. Extend to 40 only if loss and KL remain finite, at least 25% of groups have
    nonzero reward variance, resume works, and projected phase compute remains
    below $45.
@@ -145,7 +154,7 @@ SSH command:
 Historical exact cost is unavailable because the terminated GH200's ignored
 run directory was not copied off-host. Do not estimate it retroactively.
 
-The current GH200 has `$1.4428` of measured compatibility work before tax:
+The terminated GH200 incurred `$1.4428` of measured compatibility work before tax:
 `$0.6775` for Attempt 11, `$0.0337` for Attempt 12, `$0.1457` for Attempt 13,
 and `$0.5859` for Attempt 14. One-time bootstrap and idle-instance time are not
 included because their exact start/end timestamps were not preserved.

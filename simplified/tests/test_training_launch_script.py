@@ -63,6 +63,7 @@ printf 'ray %s\\n' "$*" >> "$PPP_TEST_LOG"
         "PPP_TEST_LOG": str(log),
         "PPP_TEST_TRAIN_STATUS": str(training_status),
         "PPP_HOURLY_USD": "2.29",
+        "PPP_LIFECYCLE_DIR": str(tmp_path / "lifecycle"),
     })
     if completed_step is not None:
         run_dir = Path(environment["PPP_RUN_DIR"])
@@ -267,6 +268,10 @@ def test_paid_launcher_stops_ray_before_and_after_success(tmp_path):
     assert any("scripts.train_ppp_simplified" in call for call in calls)
     assert any("summarize-run" in call for call in calls)
     assert any("--hourly-usd 2.29" in call for call in calls)
+    assert (tmp_path / "lifecycle/cleanup-status").read_text().strip() == "passed"
+    assert (
+        tmp_path / "lifecycle/gpu-processes-after-cleanup"
+    ).read_text().strip() == "0"
 
 
 def test_paid_launcher_resolves_ray_from_activated_path(tmp_path):
@@ -287,6 +292,7 @@ def test_paid_launcher_stops_ray_after_training_failure(tmp_path):
     assert calls.count("ray stop --force") == 2
     assert any("scripts.train_ppp_simplified" in call for call in calls)
     assert not any("summarize-run" in call for call in calls)
+    assert (tmp_path / "lifecycle/cleanup-status").read_text().strip() == "passed"
 
 
 def test_completed_resume_preserves_original_report(tmp_path):
@@ -305,3 +311,19 @@ def test_paid_launcher_refuses_busy_gpu_after_cleanup(tmp_path):
     assert calls.count("ray stop --force") == 2
     assert not any("scripts.train_ppp_simplified" in call for call in calls)
     assert "GPU compute processes remain after Ray cleanup: 4242" in result.stderr
+    assert (tmp_path / "lifecycle/cleanup-status").read_text().strip() == "failed"
+
+
+def test_scalar_snapshot_precedes_checkpoint_save():
+    source = (ROOT / "verl/trainer/ppo/ray_trainer.py").read_text()
+
+    durable_log = source.index(
+        'logger.log(data=durable_metrics, step=self.global_steps, backend=["file"])'
+    )
+    checkpoint = source.index("self._save_checkpoint()", durable_log)
+    complete_log = source.index(
+        "logger.log(data=metrics, step=self.global_steps)",
+        checkpoint,
+    )
+
+    assert durable_log < checkpoint < complete_log

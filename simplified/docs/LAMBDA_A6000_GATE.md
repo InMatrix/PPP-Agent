@@ -168,13 +168,55 @@ state, runs exactly the next eight-trajectory group, and rejects success unless
 step 2 has a positive finite gradient norm and a different LoRA adapter hash.
 It does not allow an alternate training parquet or prepared directory.
 
-After the compatibility and live-group gates, start the 20-step run with
-`ppp-train train --steps 20 --simulator gemini --model qwen3 --execute`.
-Rerun that same command once to verify checkpoint resume. A 40-step extension
-also requires `--projected-compute-usd AMOUNT`; the launcher refuses it unless
-the saved report shows at least 25% non-flat groups, loss and KL are finite, a
-LoRA adapter exists, resume was verified, and projected phase compute is at
-most $45.
+After the compatibility and live-group gates, start long paid work through the
+detached controller. Do not own a 20-step job with a foreground SSH shell:
+
+```bash
+source ~/.config/ppp-agent/gemini.env
+export CONFIRM_PAID_TRAINING=I_UNDERSTAND_LAMBDA_IS_BILLING
+export PPP_PYTHON=/home/ubuntu/PPP-Agent/simplified/.venv-lambda-qwen3/bin/python
+export PPP_HOURLY_USD=2.29
+
+bash simplified/scripts/manage_ppp_rl_run.sh start attempt-15 \
+  --steps 20 --simulator gemini --model qwen3
+```
+
+`start` prints the worker PID and returns after detaching stdin, stdout, and
+stderr from the SSH session. It is then safe to disconnect. Reconnect and
+inspect the same run with:
+
+```bash
+bash simplified/scripts/manage_ppp_rl_run.sh status attempt-15
+bash simplified/scripts/manage_ppp_rl_run.sh logs attempt-15 --lines 100
+bash simplified/scripts/manage_ppp_rl_run.sh logs attempt-15 --follow
+```
+
+Each run ID is immutable and path-safe. Its ignored lifecycle directory under
+`simplified/results/training/launches/` contains:
+
+- the detached worker PID and sanitized command;
+- start, worker-start, and finish timestamps;
+- `starting`, `running`, `succeeded`, or `failed` status;
+- the process exit code and combined run log; and
+- Ray cleanup status plus the observed post-cleanup GPU-process count.
+
+The controller inherits the instance-local Gemini key but never writes it to
+the command or lifecycle files. If `status` reports `orphaned`, `failed`
+cleanup, or a nonzero GPU-process count, inspect the log and terminate the
+instance rather than starting another run.
+
+On checkpoint steps, Verl now fsyncs a `pre_checkpoint` scalar record before
+serializing the checkpoint. A normally completed step writes a second, fuller
+record afterward. Consumers use the last record for a step, while an
+interrupted run retains the policy loss, gradient norm, KL, global step, and
+epoch needed for diagnosis.
+
+Rerun the same 20-step training configuration with a new lifecycle run ID to
+verify checkpoint resume. A 40-step extension also requires
+`--projected-compute-usd AMOUNT`; the launcher refuses it unless the saved
+report shows at least 25% non-flat groups, loss and KL are finite, a LoRA
+adapter exists, resume was verified, and projected phase compute is at most
+$45.
 
 ## Qwen3.5 primary-stack retry
 

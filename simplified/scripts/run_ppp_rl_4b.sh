@@ -246,6 +246,17 @@ nvidia_smi="${PPP_NVIDIA_SMI:-$(command -v nvidia-smi || true)}"
 gpu_idle_attempts="${PPP_GPU_IDLE_ATTEMPTS:-15}"
 gpu_idle_interval="${PPP_GPU_IDLE_INTERVAL_SECONDS:-1}"
 ppp_run_started_at=""
+lifecycle_dir="${PPP_LIFECYCLE_DIR:-}"
+
+write_lifecycle_file() {
+  [[ -n "$lifecycle_dir" ]] || return 0
+  local name="$1"
+  local value="$2"
+  local temporary="${lifecycle_dir}/${name}.tmp.$$"
+  mkdir -p "$lifecycle_dir"
+  printf '%s\n' "$value" > "$temporary"
+  mv "$temporary" "${lifecycle_dir}/${name}"
+}
 
 stop_ray_runtime() {
   "$ray_cli" stop --force >/dev/null 2>&1
@@ -278,6 +289,7 @@ wait_for_idle_gpu() {
 cleanup_paid_runtime() {
   local status=$?
   local cleanup_failed="false"
+  local gpu_processes_after_cleanup="unknown"
   trap - EXIT INT TERM HUP
   # Preserve a usable sanitized report when the driver is interrupted after
   # workers have already emitted a complete rollout group. Successful runs
@@ -310,7 +322,19 @@ cleanup_paid_runtime() {
   if ! wait_for_idle_gpu; then
     echo "WARN: GPU cleanup did not complete; terminate the instance." >&2
     cleanup_failed="true"
+  else
+    gpu_processes_after_cleanup="0"
   fi
+  if ! write_lifecycle_file "gpu-processes-after-cleanup" "$gpu_processes_after_cleanup"; then
+    echo "WARN: failed to record post-cleanup GPU state." >&2
+    cleanup_failed="true"
+  fi
+  if [[ "$cleanup_failed" == "true" ]]; then
+    write_lifecycle_file "cleanup-status" "failed" || true
+  else
+    write_lifecycle_file "cleanup-status" "passed" || true
+  fi
+  write_lifecycle_file "cleanup-finished-at-utc" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
   if [[ "$status" -eq 0 && "$cleanup_failed" == "true" ]]; then
     status=2
   fi

@@ -10,14 +10,17 @@ SPEC.loader.exec_module(TRACKING)
 FileLogger = TRACKING.FileLogger
 
 
-def test_file_logger_flushes_each_record(tmp_path, monkeypatch):
+def test_file_logger_fsyncs_each_record(tmp_path, monkeypatch):
     output = tmp_path / "metrics.jsonl"
     output.write_text('{"step": 0, "data": {"existing": true}}\n')
     monkeypatch.setenv("VERL_FILE_LOGGER_PATH", str(output))
+    fsync_calls = []
+    monkeypatch.setattr(TRACKING.os, "fsync", fsync_calls.append)
     logger = FileLogger("project", "experiment")
 
     logger.log({"actor/pg_loss": 0.25}, step=1)
 
+    assert fsync_calls == [logger.fp.fileno()]
     records = [json.loads(line) for line in output.read_text().splitlines()]
     assert records == [
         {"step": 0, "data": {"existing": True}},

@@ -1337,9 +1337,23 @@ class RayPPOTrainer:
                 # 2. It's the last training step.
                 # 3. The current step number is a multiple of the save frequency.
                 # 4. The ESI(Elastic Server Instance)/training plan is close to expiration.
-                if self.config.trainer.save_freq > 0 and (
+                should_save_checkpoint = self.config.trainer.save_freq > 0 and (
                     is_last_step or self.global_steps % self.config.trainer.save_freq == 0 or esi_close_to_expiration
-                ):
+                )
+                if should_save_checkpoint:
+                    # Checkpoint serialization can be the last observable event
+                    # if a remote shell disappears. Persist the optimizer
+                    # scalars that already exist before saving. The normal
+                    # logger call below writes a second, complete record after
+                    # checkpoint timing is available; readers intentionally
+                    # use the last record per step.
+                    durable_metrics = {
+                        **metrics,
+                        "training/global_step": self.global_steps,
+                        "training/epoch": epoch,
+                        "training/log_phase": "pre_checkpoint",
+                    }
+                    logger.log(data=durable_metrics, step=self.global_steps, backend=["file"])
                     if esi_close_to_expiration:
                         print("Force saving checkpoint: ESI instance expiration approaching.")
                     with marked_timer("save_checkpoint", timing_raw, color="green"):
