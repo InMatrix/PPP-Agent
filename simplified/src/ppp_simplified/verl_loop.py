@@ -76,11 +76,10 @@ async def run_simplified_rollout(
 ) -> Any:
     """Generate one fully token-masked trajectory for Verl."""
 
-    from agents.utils import (
-        Agent,
+    from agents.utils import Agent, CallLLM
+    from verl.experimental.agent_loop.agent_loop import (
         AgentLoopMetrics,
         AgentLoopOutput,
-        CallLLM,
     )
 
     started_at = time.monotonic()

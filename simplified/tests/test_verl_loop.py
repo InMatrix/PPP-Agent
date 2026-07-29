@@ -41,6 +41,19 @@ def test_vendored_rollout_client_requests_logprobs_and_honors_turn_cap():
     assert "'logprobs': True" in source
 
 
+def test_rollout_returns_verls_output_and_metrics_models():
+    source = (
+        Path(__file__).parents[1]
+        / "src"
+        / "ppp_simplified"
+        / "verl_loop.py"
+    ).read_text()
+    assert "from agents.utils import Agent, CallLLM" in source
+    assert "from verl.experimental.agent_loop.agent_loop import (" in source
+    assert "AgentLoopMetrics," in source
+    assert "AgentLoopOutput," in source
+
+
 def test_parse_action_keeps_navigation_v2_tool_contract():
     action = _parse_action(
         json.dumps(
