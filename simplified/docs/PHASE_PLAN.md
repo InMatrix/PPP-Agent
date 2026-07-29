@@ -45,7 +45,7 @@ It is a teaching-scale reproduction, not a performance reproduction.
 - Latest live-tested commit: `bcf5e5d`
   (`Add guarded step-two continuation gate`).
 - Latest offline-verified change: detached run management and pre-checkpoint
-  scalar durability; 109 simplified tests pass.
+  scalar durability; 110 simplified tests pass.
 - Retrospective baseline commit: `e01a29a`
   (`Document GH200 compatibility attempts`).
 - Active Lambda instance: none; the user terminated the GH200 after Attempt 14.

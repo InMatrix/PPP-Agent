@@ -19,6 +19,7 @@ def _run_guarded_launcher(
     busy_gpu: bool = False,
     resolve_runtime_from_path: bool = False,
     completed_step: int | None = None,
+    trajectory_count: int = 0,
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     prepared = tmp_path / "prepared"
     prepared.mkdir()
@@ -71,6 +72,11 @@ printf 'ray %s\\n' "$*" >> "$PPP_TEST_LOG"
         (run_dir / "latest_checkpointed_iteration.txt").write_text(
             f"{completed_step}\n"
         )
+    if trajectory_count:
+        trajectory_dir = Path(environment["PPP_RUN_DIR"]) / "sanitized-trajectories"
+        trajectory_dir.mkdir(parents=True, exist_ok=True)
+        for index in range(trajectory_count):
+            (trajectory_dir / f"{index:03d}.json").write_text("{}")
     if resolve_runtime_from_path:
         environment["PATH"] = f"{tmp_path}{os.pathsep}{environment['PATH']}"
     else:
@@ -293,6 +299,17 @@ def test_paid_launcher_stops_ray_after_training_failure(tmp_path):
     assert any("scripts.train_ppp_simplified" in call for call in calls)
     assert not any("summarize-run" in call for call in calls)
     assert (tmp_path / "lifecycle/cleanup-status").read_text().strip() == "passed"
+
+
+def test_interrupted_launcher_summarizes_all_complete_groups(tmp_path):
+    result, calls = _run_guarded_launcher(
+        tmp_path,
+        training_status=7,
+        trajectory_count=16,
+    )
+
+    assert result.returncode == 7
+    assert any("summarize-run" in call for call in calls)
 
 
 def test_completed_resume_preserves_original_report(tmp_path):

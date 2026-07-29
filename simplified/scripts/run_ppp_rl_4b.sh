@@ -303,7 +303,10 @@ cleanup_paid_runtime() {
           -name '*.json' | wc -l | xargs
       )"
     fi
-    if [[ "$trajectory_count" == "8" ]]; then
+    # Summarize only complete eight-rollout groups. This preserves every
+    # completed group from an interrupted 20/40-step run without treating a
+    # partially emitted group as training evidence.
+    if ((trajectory_count >= 8 && trajectory_count % 8 == 0)); then
       local interrupted_finished_at
       interrupted_finished_at="$(date +%s)"
       if ! "$ppp_python" -m ppp_simplified.training_cli summarize-run \
