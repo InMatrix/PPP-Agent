@@ -105,6 +105,7 @@ def test_training_launcher_is_print_only_by_default():
     assert "actor.ppo_mini_batch_size=1" in result.stdout
     assert "data.train_batch_size=1" in result.stdout
     assert "rollout.n=8" in result.stdout
+    assert "rollout.enforce_eager=True" in result.stdout
     assert "rollout.gpu_memory_utilization=0.20" in result.stdout
     assert "rollout.plugin.workflow=search" in result.stdout
     assert "data.val_files=simplified/results/training/prepared/train-16x13.parquet" in result.stdout

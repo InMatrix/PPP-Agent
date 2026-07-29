@@ -112,6 +112,10 @@ command=(
   actor_rollout_ref.rollout.n=8
   actor_rollout_ref.rollout.tensor_model_parallel_size=1
   actor_rollout_ref.rollout.agent.num_workers=1
+  # Avoid vLLM's compile/cudagraph path during the single-GPU compatibility
+  # gate. The GH200 ARM64 engine reached its first request but returned a null
+  # execution future in compiled mode.
+  actor_rollout_ref.rollout.enforce_eager=True
   # The colocated 4B actor leaves about 20 GiB free even on an 80 GiB H100.
   # vLLM interprets this fraction against total device memory, so 0.20 keeps
   # its requested KV-cache allocation below the observed free-memory ceiling.
