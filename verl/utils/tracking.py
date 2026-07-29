@@ -236,7 +236,9 @@ class FileLogger:
             os.makedirs(directory, exist_ok=True)
             self.filepath = os.path.join(directory, f"{self.experiment_name}.jsonl")
             print(f"Creating file logger at {self.filepath}")
-        self.fp = open(self.filepath, "w")
+        # Keep earlier steps when a run resumes in the same checkpoint
+        # directory. Opening with ``w`` silently erased the pre-resume history.
+        self.fp = open(self.filepath, "a")
 
     def log(self, data, step):
         data = {"step": step, "data": data}

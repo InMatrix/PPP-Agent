@@ -1052,6 +1052,13 @@ class RayPPOTrainer:
         self._load_checkpoint()
 
         current_epoch = self.global_steps // len(self.train_dataloader)
+        if self.global_steps >= self.total_training_steps:
+            print(
+                "Checkpoint already reached requested total training steps: "
+                f"{self.global_steps}/{self.total_training_steps}. "
+                "Resume load verified; no optimizer step will run."
+            )
+            return
 
         # perform validation before training
         # currently, we only support validation using the reward_function.
