@@ -138,6 +138,19 @@ def command_prepare(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_contract_gate(args: argparse.Namespace) -> int:
+    """Run the synthetic Verl/FoldGRPO contract without loading a model."""
+
+    from .verl_contract import run_verl_contract_gate
+
+    payload = run_verl_contract_gate()
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    print(f"contract artifact: {args.output}")
+    print(json.dumps(payload, indent=2, sort_keys=True))
+    return 0
+
+
 def _load_subset_for_group(
     args: argparse.Namespace,
     episode,
@@ -582,6 +595,17 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--selection-seed", type=int, default=42)
     prepare.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR / "prepared")
     prepare.set_defaults(handler=command_prepare)
+
+    contract_gate = subparsers.add_parser(
+        "contract-gate",
+        help="Validate the synthetic Verl-to-FoldGRPO batch contract.",
+    )
+    contract_gate.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_OUTPUT_DIR / "contract-gate.json",
+    )
+    contract_gate.set_defaults(handler=command_contract_gate)
 
     def add_group_arguments(command: argparse.ArgumentParser) -> None:
         command.add_argument("--data", type=Path, default=DEFAULT_DATA)

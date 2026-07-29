@@ -95,6 +95,15 @@ First implement a local synthetic adapter-to-trainer contract test that:
 7. Verifies that serialized evidence contains no secrets or raw repository
    observations.
 
+The implementation command is:
+
+```bash
+ppp-train contract-gate
+```
+
+It uses the actual vendored Verl/Torch path but does not load Qwen, initialize
+CUDA model weights, contact Gemini, or inspect a task repository.
+
 After that test passes and is committed:
 
 1. Launch the smallest compatible GPU available.

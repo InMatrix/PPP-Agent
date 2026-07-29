@@ -11,6 +11,7 @@ from ppp_simplified.training_cli import (
     _markdown_summary,
     _validate_artifact,
     build_parser,
+    command_contract_gate,
     command_summarize_run,
     command_check_extension,
     command_train,
@@ -42,7 +43,7 @@ def artifact() -> dict:
 
 def test_parser_exposes_local_and_guarded_gpu_commands():
     parser = build_parser()
-    assert {"doctor", "prepare", "smoke", "live-group", "export", "summarize-run", "check-extension", "train", "evaluate"} <= set(parser._subparsers._group_actions[0].choices)
+    assert {"doctor", "prepare", "contract-gate", "smoke", "live-group", "export", "summarize-run", "check-extension", "train", "evaluate"} <= set(parser._subparsers._group_actions[0].choices)
     train = parser.parse_args(["train", "--steps", "1", "--simulator", "deterministic"])
     assert train.steps == 1
     assert train.execute is False
@@ -50,6 +51,24 @@ def test_parser_exposes_local_and_guarded_gpu_commands():
     live = parser.parse_args(["live-group"])
     assert live.inference_seeds == DEFAULT_LIVE_INFERENCE_SEEDS
     assert live.model == "qwen35"
+
+
+def test_contract_gate_writes_sanitized_summary(monkeypatch, tmp_path: Path):
+    payload = {
+        "schema_version": 1,
+        "stage": "adapter_to_foldgrpo_contract",
+        "status": "passed",
+        "group_size": 8,
+    }
+    monkeypatch.setattr(
+        "ppp_simplified.verl_contract.run_verl_contract_gate",
+        lambda: payload,
+    )
+    output = tmp_path / "contract.json"
+    assert command_contract_gate(
+        type("Args", (), {"output": output})()
+    ) == 0
+    assert json.loads(output.read_text()) == payload
 
 
 def test_live_group_requires_eight_distinct_seeds_and_model_routes():
