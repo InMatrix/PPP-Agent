@@ -52,6 +52,7 @@ def test_rollout_returns_verls_output_and_metrics_models():
     assert "from verl.experimental.agent_loop.agent_loop import (" in source
     assert "AgentLoopMetrics," in source
     assert "AgentLoopOutput," in source
+    assert '"mask_rollout": termination == "turn_limit"' in source
 
 
 def test_parse_action_keeps_navigation_v2_tool_contract():

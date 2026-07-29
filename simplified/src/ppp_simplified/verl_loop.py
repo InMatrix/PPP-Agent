@@ -356,6 +356,9 @@ async def run_simplified_rollout(
         "predicted_functions": list(tools.final_answer or ()),
         "reward_breakdown": asdict(reward),
         "termination": termination,
+        # Verl's mask_overlong path expects this per-trajectory flag and
+        # converts True into a zero policy-loss mask for the whole rollout.
+        "mask_rollout": termination == "turn_limit",
         "model_calls": model_calls,
         "duplicate_actions_suppressed": duplicate_suppressed,
         "finish_validation_passed": finish_validation_passed,
