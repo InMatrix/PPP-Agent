@@ -66,6 +66,10 @@ def test_gh200_gate_is_arm64_and_binary_wheel_only():
     assert 'minimum_gpu_memory_mib=90000' in source
     assert 'expected_gpu_name="GH200"' in source
     assert source.count("--only-binary=:all:") == 4
+    assert (
+        "--no-deps --no-binary=:all: antlr4-python3-runtime==4.9.3"
+        in source
+    )
     assert source.index('command -v nvidia-smi') < source.index(
         'if [[ "$mode" == "bootstrap" ]]'
     )

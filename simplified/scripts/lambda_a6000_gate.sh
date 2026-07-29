@@ -149,6 +149,10 @@ PY
   # release install the matching PyTorch build. Requiring wheels prevents an
   # ARM64 host from silently spending paid time compiling a missing package.
   "$venv_dir/bin/python" -m pip install --only-binary=:all: "vllm==$vllm_version" "$transformers_requirement"
+  # Hydra 1.3.2 pins antlr4-python3-runtime 4.9.*, for which PyPI publishes no
+  # wheel. This audited package is pure Python; install it without dependencies
+  # as the sole source-archive exception before restoring the wheel-only rule.
+  "$venv_dir/bin/python" -m pip install --no-deps --no-binary=:all: antlr4-python3-runtime==4.9.3
   "$venv_dir/bin/python" -m pip install --only-binary=:all: -r "$repo_root/simplified/requirements.lambda-a6000.txt"
   "$venv_dir/bin/python" -m pip install --only-binary=:all: -e "$repo_root/simplified[test,gemini]"
   "$venv_dir/bin/python" -m pip check

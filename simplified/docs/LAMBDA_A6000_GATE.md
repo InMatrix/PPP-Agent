@@ -46,11 +46,13 @@ bash simplified/scripts/lambda_a6000_gate.sh \
   --venv simplified/.venv-lambda-qwen3
 ```
 
-Hardware validation runs before any package download. Every registry
-dependency is installed with `--only-binary=:all:`. If ARM64 lacks a required
-wheel, pip must fail rather than begin a paid source compilation. Save that
-error, terminate the instance, and decide separately whether a documented
-container or source-build path is worthwhile.
+Hardware validation runs before any package download. Native and compiled
+registry dependencies are installed with `--only-binary=:all:`. The sole
+source-archive exception is `antlr4-python3-runtime==4.9.3`: Hydra pins that
+version, PyPI provides no wheel, and the package is pure Python. If ARM64 lacks
+any other required wheel, pip must fail rather than begin a paid source
+compilation. Save that error, terminate the instance, and decide separately
+whether a documented container or source-build path is worthwhile.
 
 The script creates `simplified/.venv-lambda-qwen3`. The vendored `verl/` source
 has no independent package manifest, so the script exports the repository root

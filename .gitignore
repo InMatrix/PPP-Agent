@@ -3,6 +3,7 @@ data/
 envs/gym_data/
 envs/_repo_cache/
 simplified/.venv/
+simplified/.venv-lambda*/
 simplified/.env
 simplified/workspaces/
 simplified/results/
