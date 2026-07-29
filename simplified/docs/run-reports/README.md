@@ -1,6 +1,6 @@
 # GH200 compatibility-run reports
 
-These reports reconstruct the nine one-step compatibility attempts used to
+These reports reconstruct the compatibility attempts used to
 bring the teaching-scale PPP reinforcement-learning stack up on one Lambda
 GH200. They are intended as source material for a later retrospective on the
 development process, not as benchmark results.
@@ -19,10 +19,11 @@ off-host. The individual reports therefore distinguish:
 - **Inference:** conclusions derived from a traceback plus the corrective change.
   Inferences are labeled and are not presented as raw measurements.
 
-All attempts used `Qwen/Qwen3-4B`, BF16 rank-16 LoRA, eight trajectories,
+Attempts 01–09 used `Qwen/Qwen3-4B`, BF16 rank-16 LoRA, eight trajectories,
 navigation-v2 read-only tools, at most eight logical turns, and the deterministic
-simulator. Gemini was not called. Consequently, these runs test integration and
-training mechanics—not user-simulator quality or trained-agent performance.
+simulator. Attempt 10 used eight synthetic trajectories and no model. Gemini was
+not called. Consequently, these runs test integration and training mechanics—not
+user-simulator quality or trained-agent performance.
 
 ## Attempt index
 
@@ -37,12 +38,18 @@ training mechanics—not user-simulator quality or trained-agent performance.
 | [07](attempt-07.md) | Sanitized trajectory export | Duplicate Pydantic model identity | `786f7dc` | Type ownership |
 | [08](attempt-08.md) | Trainer preprocessing after eight rollouts | Missing `mask_rollout` | `0de62a4` | Batch-schema contract |
 | [09](attempt-09.md) | FoldGRPO advantage entry after actor preprocessing | Missing group `uid` | `139e5d3` | Grouping/schema contract |
+| [10](attempt-10.md) | Synthetic FoldGRPO advantage and DAPO loss | Passed; no model or optimizer used | `2042e01` | Preventive contract gate |
 
-No attempt completed an optimizer step or wrote a checkpoint. Attempts 08 and
+No attempt has completed an optimizer step or written a checkpoint. Attempts 08 and
 09 each completed a full eight-rollout group before failing at the next trainer
 boundary. The last observed compatibility directory contained 17 sanitized
 trajectory files: one retained from attempt 07 plus eight each from attempts 08
 and 09.
+
+Attempt 10 used the actual vendored Verl/Torch postprocessing, FoldGRPO, and
+DAPO loss path with synthetic inputs. Its
+[`sanitized machine-readable artifact`](artifacts/attempt-10-contract-gate.json)
+is durable, but it did not load Qwen or perform an optimizer update.
 
 ## Development-process signals
 

@@ -1,7 +1,7 @@
 # Small-scale PPP reinforcement-learning phase plan
 
-Last updated: 2026-07-29, after compatibility attempt 09 and its retrospective
-report.
+Last updated: 2026-07-29, after compatibility attempt 10 passed the synthetic
+adapter-to-FoldGRPO contract gate.
 
 This is the durable execution plan for the teaching-scale PPP-RL phase. It
 tracks what has actually been proved, what remains uncertain, and the exact
@@ -42,10 +42,12 @@ It is a teaching-scale reproduction, not a performance reproduction.
 ## Current state
 
 - Current branch: `codex/ppp-rl-4b`.
-- Latest implementation fix: `139e5d3` (`Preserve FoldGRPO rollout identities`).
+- Latest implementation gate: `2042e01`
+  (`Add synthetic FoldGRPO contract gate`).
 - Retrospective baseline commit: `e01a29a`
   (`Document GH200 compatibility attempts`).
-- Active Lambda instance: none.
+- Active Lambda instance: one GH200 at the user's request; environment
+  bootstrapped and ready for the bounded deterministic one-step gate.
 - Live simulator used in compatibility attempts: no.
 - Optimizer steps completed: 0.
 - Checkpoints written: 0.
@@ -54,9 +56,11 @@ It is a teaching-scale reproduction, not a performance reproduction.
 Attempt 09 completed all eight real Qwen trajectories, overlong masking,
 old-policy log-probability processing, and actor preprocessing. It entered
 FoldGRPO advantage calculation, then failed because the async postprocessor
-dropped the shared question `uid`. Commit `139e5d3` now preserves `uid`,
-`gen_uid`, and `process_reward_mask`, but that fix has not yet been exercised
-by a live GPU run.
+dropped the shared question `uid`. Attempt 10 exercised commit `2042e01` in the
+real ARM64 Verl/Torch environment without loading a model. All eight synthetic
+outputs retained `uid`, `gen_uid`, masks, log probabilities, and reward
+metadata; FoldGRPO advantages and DAPO loss were finite and masked-token
+invariance passed.
 
 ## Gate status
 
@@ -66,8 +70,8 @@ by a live GPU run.
 | Model load and generation | Real Qwen completion through colocated vLLM | Passed | [Attempt 06](run-reports/attempt-06.md) |
 | Eight-rollout group | Eight sanitized real-Qwen trajectories | Passed | [Attempt 08](run-reports/attempt-08.md), [Attempt 09](run-reports/attempt-09.md) |
 | Old-policy log probabilities | Non-null generated-token log probabilities reach actor preprocessing | Passed | [Attempt 09](run-reports/attempt-09.md) |
-| Adapter-to-trainer schema | Synthetic group contains every FoldGRPO field and invariant | **Not implemented** | Required before another paid run |
-| FoldGRPO advantages | Finite group-relative advantages for eight trajectories | Not proved | Next live gate |
+| Adapter-to-trainer schema | Synthetic group contains every FoldGRPO field and invariant | Passed | [Attempt 10](run-reports/attempt-10.md) |
+| FoldGRPO advantages | Finite group-relative advantages for eight trajectories | Passed synthetically; real-Qwen path not proved | [Attempt 10](run-reports/attempt-10.md) |
 | DAPO backward/optimizer | One finite loss and real LoRA parameter update | Not proved | Pending |
 | Checkpoint save | LoRA adapter and tracker written at step 1 | Not proved | Pending |
 | Checkpoint reload/resume | Second guarded command resumes from step 1 | Not proved | Pending |
@@ -77,41 +81,21 @@ by a live GPU run.
 
 ## Exact next gate
 
-Do not launch another paid instance yet.
+The synthetic contract gate has passed on the active GH200. Before using model
+compute:
 
-First implement a local synthetic adapter-to-trainer contract test that:
-
-1. Constructs eight Verl-native `AgentLoopOutput` objects without loading a
-   model.
-2. Assigns one shared `uid` and eight unique `gen_uid` values.
-3. Mixes natural, deadline, and turn-limit termination states.
-4. Runs the actual async postprocessor into a `DataProto`.
-5. Asserts the presence and shape of `response_mask`,
-   `rollout_log_probs`, `process_reward_mask`, `mask_rollout`, reward scores,
-   `uid`, and `gen_uid`.
-6. Calls the actual FoldGRPO advantage function and checks finite results,
-   group size eight, and zero loss contribution from overlong/environment
-   tokens.
-7. Verifies that serialized evidence contains no secrets or raw repository
-   observations.
-
-The implementation command is:
-
-```bash
-ppp-train contract-gate
-```
-
-It uses the actual vendored Verl/Torch path but does not load Qwen, initialize
-CUDA model weights, contact Gemini, or inspect a task repository.
-
-After that test passes and is committed:
-
-1. Launch the smallest compatible GPU available.
-2. Run one deterministic `--steps 1` gate.
-3. Require finite FoldGRPO advantages, backward pass, a changed LoRA parameter,
-   and a saved step-1 checkpoint.
-4. Export durable sanitized artifacts before terminating the instance.
-5. Write the new run report and update this plan before any further paid run.
+1. Commit and push Attempt 10 plus this plan update.
+2. Put the prepared training subset and immutable configuration on the host,
+   verify their checksums, and keep `heldout-v1` absent.
+3. Record the exact tested commit, UTC start time, instance price when known,
+   command, and a baseline GPU-memory sample.
+4. Run exactly one deterministic `--steps 1` gate.
+5. Require eight real Qwen trajectories, finite FoldGRPO advantages, a finite
+   backward pass, a changed LoRA parameter, and a saved step-1 checkpoint.
+6. Copy sanitized metrics, summary, checkpoint manifest, and failure evidence
+   to durable local storage before cleanup.
+7. Write the next run report and update this plan before any resume or Gemini
+   run.
 
 ## Subsequent sequence
 

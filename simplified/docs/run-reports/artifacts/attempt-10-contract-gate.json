@@ -1,0 +1,18 @@
+{
+  "environment_tokens": 16,
+  "finite_advantages": true,
+  "finite_policy_loss": true,
+  "group_size": 8,
+  "masked_token_invariance": true,
+  "model_tokens": 24,
+  "overlong_rollouts": 2,
+  "response_shape": [
+    8,
+    6
+  ],
+  "schema_version": 1,
+  "shared_group_ids": 1,
+  "stage": "adapter_to_foldgrpo_contract",
+  "status": "passed",
+  "unique_trajectory_ids": 8
+}
