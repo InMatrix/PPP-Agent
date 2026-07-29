@@ -18,6 +18,7 @@ def _load_compat():
 compat = _load_compat()
 resolve_enable_log_requests = compat.resolve_enable_log_requests
 initialize_app_state = compat.initialize_app_state
+pop_max_tokens = compat.pop_max_tokens
 
 
 def test_vllm_lora_model_import_supports_new_module_name():
@@ -57,6 +58,45 @@ def test_request_logging_inverts_legacy_negative_flag():
 
 def test_request_logging_defaults_to_disabled():
     assert resolve_enable_log_requests(SimpleNamespace()) is False
+
+
+def test_requested_max_tokens_is_removed_and_preserved():
+    sampling_params = {"temperature": 1.0, "max_tokens": 512}
+
+    limit = pop_max_tokens(
+        sampling_params,
+        prompt_length=2000,
+        max_model_len=10240,
+    )
+
+    assert limit == 512
+    assert sampling_params == {"temperature": 1.0}
+
+
+def test_requested_max_tokens_is_capped_to_remaining_context():
+    sampling_params = {"max_tokens": 512}
+
+    assert (
+        pop_max_tokens(
+            sampling_params,
+            prompt_length=10000,
+            max_model_len=10240,
+        )
+        == 240
+    )
+
+
+def test_missing_max_tokens_uses_remaining_context():
+    sampling_params = {"top_p": 1.0}
+
+    assert (
+        pop_max_tokens(
+            sampling_params,
+            prompt_length=6144,
+            max_model_len=10240,
+        )
+        == 4096
+    )
 
 
 def test_app_state_initializer_supports_vllm_012_signature():

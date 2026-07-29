@@ -14,6 +14,21 @@ def resolve_enable_log_requests(engine_args: object) -> bool:
     return False
 
 
+def pop_max_tokens(
+    sampling_params: dict[str, Any],
+    *,
+    prompt_length: int,
+    max_model_len: int,
+) -> int:
+    """Remove the client limit and cap it to vLLM's remaining context."""
+
+    available = max_model_len - prompt_length
+    requested = sampling_params.pop("max_tokens", None)
+    if requested is None:
+        return available
+    return min(available, int(requested))
+
+
 async def initialize_app_state(
     initializer: Callable[..., Awaitable[None]],
     engine_client: Any,
