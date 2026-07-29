@@ -241,6 +241,10 @@ class FileLogger:
     def log(self, data, step):
         data = {"step": step, "data": data}
         self.fp.write(json.dumps(data) + "\n")
+        # Ray may tear down the task actor without running ``__del__`` after
+        # the final PPO step. Make each scalar record durable immediately so a
+        # completed update never leaves an empty metrics file.
+        self.fp.flush()
 
     def finish(self):
         self.fp.close()

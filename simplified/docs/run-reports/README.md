@@ -39,17 +39,22 @@ user-simulator quality or trained-agent performance.
 | [08](attempt-08.md) | Trainer preprocessing after eight rollouts | Missing `mask_rollout` | `0de62a4` | Batch-schema contract |
 | [09](attempt-09.md) | FoldGRPO advantage entry after actor preprocessing | Missing group `uid` | `139e5d3` | Grouping/schema contract |
 | [10](attempt-10.md) | Synthetic FoldGRPO advantage and DAPO loss | Passed; no model or optimizer used | `2042e01` | Preventive contract gate |
+| [11](attempt-11.md) | Real backward, optimizer, and checkpoint save | Flat zero-reward group; no effective parameter update | Same evidence commit | Learning signal / observability |
 
-No attempt has completed an optimizer step or written a checkpoint. Attempts 08 and
-09 each completed a full eight-rollout group before failing at the next trainer
-boundary. The last observed compatibility directory contained 17 sanitized
-trajectory files: one retained from attempt 07 plus eight each from attempts 08
-and 09.
+Attempt 11 completed the first real optimizer call and wrote the first
+checkpoint. Because its eight rewards were all zero, it did not change the
+policy. Attempts 08 and 09 each completed a full eight-rollout group before
+failing at the next trainer boundary.
 
 Attempt 10 used the actual vendored Verl/Torch postprocessing, FoldGRPO, and
 DAPO loss path with synthetic inputs. Its
 [`sanitized machine-readable artifact`](artifacts/attempt-10-contract-gate.json)
 is durable, but it did not load Qwen or perform an optimizer update.
+
+Attempt 11's LoRA adapter and sanitized evidence bundle are also preserved in
+the ignored local results directory. Its compact
+[`tracked result`](artifacts/attempt-11-one-step.json) contains hashes and
+aggregate metrics without prompts, repository observations, or trajectory IDs.
 
 ## Development-process signals
 

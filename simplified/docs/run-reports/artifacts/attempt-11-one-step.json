@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "stage": "deterministic_one_step",
+  "status": "mechanics_passed_flat_reward",
+  "git_commit": "2b6bb1dde4806bac101b1b81f538c0b35c13b376",
+  "hardware": "NVIDIA GH200 96 GB",
+  "hourly_usd": 2.29,
+  "run_start_utc": "2026-07-29T04:58:49Z",
+  "checkpoint_utc": "2026-07-29T05:16:34Z",
+  "compute_seconds": 1065,
+  "estimated_compute_usd": 0.6774583333333334,
+  "group_size": 8,
+  "completed_trajectories": 8,
+  "model_calls": 71,
+  "reward_mean": 0.0,
+  "reward_std": 0.0,
+  "group_advantages": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "termination_counts": {
+    "turn_limit": 4,
+    "natural_finish": 3,
+    "deadline_finish": 1
+  },
+  "invalid_finish_count": 4,
+  "overlong_rollouts": 4,
+  "foldgrpo_completed": true,
+  "backward_completed": true,
+  "optimizer_step_completed": true,
+  "policy_loss": 0.0,
+  "gradient_norm": 0.0,
+  "effective_parameter_update": false,
+  "rollout_kl": 0.0007948699203552678,
+  "peak_gpu_allocated_gb": 49.114670753479004,
+  "peak_gpu_reserved_gb": 51.05859375,
+  "checkpoint_saved": true,
+  "checkpoint_reload_tested": false,
+  "file_logger_populated": false,
+  "artifacts": {
+    "lora_adapter_sha256": "833506233639b7b104183539f28112a4b694ce0e37f3d23978feeaa554906f46",
+    "lora_config_sha256": "94af2076a670e18b2d49f4f173d854d633861248670d3c605a5f3ca8af1aaf43",
+    "optimizer_state_sha256": "04d408b11f048a532676958ff80ca5f30d475aa11cd826d7734a1df3e53e8de5",
+    "sanitized_report_sha256": "7984cd851268e9e13258a8f9877b0c121bd2157a4e2f5ad9e9d5d53590013cf3",
+    "durable_bundle_sha256": "f3de1bdce5bd23284b6817ba9dd7ee727283833116e39219493744d57329acbc"
+  }
+}

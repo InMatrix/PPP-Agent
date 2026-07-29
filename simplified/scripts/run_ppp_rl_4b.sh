@@ -214,6 +214,7 @@ fi
 nvidia_smi="${PPP_NVIDIA_SMI:-$(command -v nvidia-smi || true)}"
 gpu_idle_attempts="${PPP_GPU_IDLE_ATTEMPTS:-15}"
 gpu_idle_interval="${PPP_GPU_IDLE_INTERVAL_SECONDS:-1}"
+ppp_run_started_at=""
 
 stop_ray_runtime() {
   "$ray_cli" stop --force >/dev/null 2>&1
@@ -246,7 +247,31 @@ wait_for_idle_gpu() {
 cleanup_paid_runtime() {
   local status=$?
   local cleanup_failed="false"
-  trap - EXIT INT TERM
+  trap - EXIT INT TERM HUP
+  # Preserve a usable sanitized report when the driver is interrupted after
+  # workers have already emitted a complete rollout group. Successful runs
+  # create this report below, so the trap is a no-op in the common case.
+  if [[ -n "$ppp_run_started_at" && ! -f "${run_dir}/training-report.json" ]]; then
+    local trajectory_count
+    trajectory_count="0"
+    if [[ -d "${run_dir}/sanitized-trajectories" ]]; then
+      trajectory_count="$(
+        find "${run_dir}/sanitized-trajectories" -maxdepth 1 -type f \
+          -name '*.json' | wc -l | xargs
+      )"
+    fi
+    if [[ "$trajectory_count" == "8" ]]; then
+      local interrupted_finished_at
+      interrupted_finished_at="$(date +%s)"
+      if ! "$ppp_python" -m ppp_simplified.training_cli summarize-run \
+        --run-dir "$run_dir" \
+        --compute-seconds "$((interrupted_finished_at - ppp_run_started_at))" \
+        --hourly-usd "$hourly_usd"; then
+        echo "WARN: failed to finalize the sanitized training report." >&2
+        cleanup_failed="true"
+      fi
+    fi
+  fi
   if ! stop_ray_runtime; then
     echo "WARN: failed to stop the Ray runtime during cleanup." >&2
     cleanup_failed="true"
@@ -267,7 +292,7 @@ if [[ ! -x "$ray_cli" ]]; then
   echo "Ray CLI is unavailable: $ray_cli" >&2
   exit 2
 fi
-trap cleanup_paid_runtime EXIT INT TERM
+trap cleanup_paid_runtime EXIT INT TERM HUP
 if ! stop_ray_runtime; then
   echo "Failed to stop the existing Ray runtime; refusing paid execution." >&2
   exit 2

@@ -1,7 +1,7 @@
 # Small-scale PPP reinforcement-learning phase plan
 
-Last updated: 2026-07-29, after compatibility attempt 10 passed the synthetic
-adapter-to-FoldGRPO contract gate.
+Last updated: 2026-07-29, after compatibility attempt 11 completed the first
+real backward, optimizer, and checkpoint-save path with a flat reward group.
 
 This is the durable execution plan for the teaching-scale PPP-RL phase. It
 tracks what has actually been proved, what remains uncertain, and the exact
@@ -42,15 +42,15 @@ It is a teaching-scale reproduction, not a performance reproduction.
 ## Current state
 
 - Current branch: `codex/ppp-rl-4b`.
-- Latest implementation gate: `2042e01`
-  (`Add synthetic FoldGRPO contract gate`).
+- Latest tested commit: `2b6bb1d`
+  (`Record instance-specific training cost`).
 - Retrospective baseline commit: `e01a29a`
   (`Document GH200 compatibility attempts`).
 - Active Lambda instance: one GH200 at the user's request; environment
   bootstrapped and ready for the bounded deterministic one-step gate.
 - Live simulator used in compatibility attempts: no.
-- Optimizer steps completed: 0.
-- Checkpoints written: 0.
+- Optimizer calls completed: 1; effective nonzero policy updates: 0.
+- Checkpoints written: 1 (`global_step_1`).
 - Held-out evaluation opened: no.
 
 Attempt 09 completed all eight real Qwen trajectories, overlong masking,
@@ -62,6 +62,12 @@ outputs retained `uid`, `gen_uid`, masks, log probabilities, and reward
 metadata; FoldGRPO advantages and DAPO loss were finite and masked-token
 invariance passed.
 
+Attempt 11 then completed eight real Qwen trajectories and the full training
+mechanics. All eight rewards were zero, however, so the advantages, policy
+loss, gradient norm, and effective LoRA update were zero. The step-1
+checkpoint and LoRA adapter were saved. The adapter and sanitized evidence are
+durable locally; the full actor/optimizer state remains on the active GH200.
+
 ## Gate status
 
 | Gate | Acceptance evidence | Status | Evidence |
@@ -71,9 +77,9 @@ invariance passed.
 | Eight-rollout group | Eight sanitized real-Qwen trajectories | Passed | [Attempt 08](run-reports/attempt-08.md), [Attempt 09](run-reports/attempt-09.md) |
 | Old-policy log probabilities | Non-null generated-token log probabilities reach actor preprocessing | Passed | [Attempt 09](run-reports/attempt-09.md) |
 | Adapter-to-trainer schema | Synthetic group contains every FoldGRPO field and invariant | Passed | [Attempt 10](run-reports/attempt-10.md) |
-| FoldGRPO advantages | Finite group-relative advantages for eight trajectories | Passed synthetically; real-Qwen path not proved | [Attempt 10](run-reports/attempt-10.md) |
-| DAPO backward/optimizer | One finite loss and real LoRA parameter update | Not proved | Pending |
-| Checkpoint save | LoRA adapter and tracker written at step 1 | Not proved | Pending |
+| FoldGRPO advantages | Finite group-relative advantages for eight trajectories | Passed synthetically and on a flat real-Qwen group | [Attempt 10](run-reports/attempt-10.md), [Attempt 11](run-reports/attempt-11.md) |
+| DAPO backward/optimizer | One finite loss and real LoRA parameter update | Mechanics passed; zero reward variance caused zero gradient and no effective update | [Attempt 11](run-reports/attempt-11.md) |
+| Checkpoint save | LoRA adapter and tracker written at step 1 | Passed | [Attempt 11](run-reports/attempt-11.md) |
 | Checkpoint reload/resume | Second guarded command resumes from step 1 | Not proved | Pending |
 | Live Gemini group | Eight cached, sanitized trajectories without optimizer work | Not started | Pending |
 | Short training | 20 genuine optimizer updates within phase budget | Not started | Pending |
@@ -81,21 +87,17 @@ invariance passed.
 
 ## Exact next gate
 
-The synthetic contract gate has passed on the active GH200. Before using model
-compute:
+Attempt 11's evidence is durable. Before another model-backed command:
 
-1. Commit and push Attempt 10 plus this plan update.
-2. Put the prepared training subset and immutable configuration on the host,
-   verify their checksums, and keep `heldout-v1` absent.
-3. Record the exact tested commit, UTC start time, instance price when known,
-   command, and a baseline GPU-memory sample.
-4. Run exactly one deterministic `--steps 1` gate.
-5. Require eight real Qwen trajectories, finite FoldGRPO advantages, a finite
-   backward pass, a changed LoRA parameter, and a saved step-1 checkpoint.
-6. Copy sanitized metrics, summary, checkpoint manifest, and failure evidence
-   to durable local storage before cleanup.
-7. Write the next run report and update this plan before any resume or Gemini
-   run.
+1. Fix and test the empty scalar-metrics file and automatic post-run summary
+   behavior without changing RL semantics.
+2. Commit and push that fix together with this report and plan update.
+3. Run a bounded checkpoint reload/resume probe against `global_step_1`.
+4. Preserve exact load evidence and verify configuration identity.
+5. Do not claim a policy update until an ordinary real training group has
+   nonzero reward variance, a nonzero gradient, and a measured adapter delta.
+6. Keep the prompts, reward, navigation tools, group size, and selection
+   procedure frozen; do not hand-pick an easier group to manufacture success.
 
 ## Subsequent sequence
 
