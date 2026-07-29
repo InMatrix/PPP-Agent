@@ -44,6 +44,24 @@ def _one(value: Any, default: Any = None) -> Any:
         return value
 
 
+def _rollout_identity(non_tensor_batch: Any) -> tuple[str, str]:
+    """Return the question- and trajectory-level IDs required by FoldGRPO."""
+
+    uid = str(_one(non_tensor_batch.get("uid"), "") or "").strip()
+    gen_uid = str(_one(non_tensor_batch.get("gen_uid"), "") or "").strip()
+    missing = [
+        name
+        for name, value in (("uid", uid), ("gen_uid", gen_uid))
+        if not value
+    ]
+    if missing:
+        raise ValueError(
+            "Training rollout is missing required identity field(s): "
+            + ", ".join(missing)
+        )
+    return uid, gen_uid
+
+
 def _plugin_value(config: Any, name: str, default: Any) -> Any:
     plugin = getattr(config, "plugin", None)
     if plugin is None:
@@ -85,6 +103,7 @@ async def run_simplified_rollout(
     started_at = time.monotonic()
     ability = str(_one(item.non_tensor_batch.get("ability"), ""))
     extra_info = dict(_one(item.non_tensor_batch.get("extra_info"), {}) or {})
+    uid, gen_uid = _rollout_identity(item.non_tensor_batch)
     episode = episode_from_training_payload(
         ability=ability,
         extra_info=extra_info,
@@ -353,6 +372,8 @@ async def run_simplified_rollout(
     trace = await agent.get_data()
     extra_fields = {
         "instance_id": episode.instance_id,
+        "uid": uid,
+        "gen_uid": gen_uid,
         "predicted_functions": list(tools.final_answer or ()),
         "reward_breakdown": asdict(reward),
         "termination": termination,
@@ -372,6 +393,7 @@ async def run_simplified_rollout(
         "environment_tokens": int(
             len(trace["response_mask"]) - sum(trace["response_mask"])
         ),
+        "process_reward_mask": trace["process_reward_mask"],
         "latency_seconds": time.monotonic() - started_at,
         "simulator_live_calls": int(getattr(simulator, "live_calls", 0)),
     }

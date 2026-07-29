@@ -4,13 +4,21 @@ from pathlib import Path
 import pytest
 
 from ppp_simplified.data import episode_from_training_payload
-from ppp_simplified.verl_loop import _one, _parse_action
+from ppp_simplified.verl_loop import _one, _parse_action, _rollout_identity
 
 
 def test_one_unwraps_scalars_without_truncating_strings_or_dicts():
     assert _one("FuncLocEnv@payload") == "FuncLocEnv@payload"
     assert _one({"index": "sample-1"}) == {"index": "sample-1"}
     assert _one(["first"]) == "first"
+
+
+def test_rollout_identity_preserves_foldgrpo_group_and_sample_ids():
+    assert _rollout_identity(
+        {"uid": ["question-1"], "gen_uid": ["trajectory-7"]}
+    ) == ("question-1", "trajectory-7")
+    with pytest.raises(ValueError, match="gen_uid"):
+        _rollout_identity({"uid": "question-1"})
 
 
 def test_verl_loop_class_is_worker_importable_from_hydra_config():
@@ -53,6 +61,7 @@ def test_rollout_returns_verls_output_and_metrics_models():
     assert "AgentLoopMetrics," in source
     assert "AgentLoopOutput," in source
     assert '"mask_rollout": termination == "turn_limit"' in source
+    assert '"process_reward_mask": trace["process_reward_mask"]' in source
 
 
 def test_parse_action_keeps_navigation_v2_tool_contract():
