@@ -79,6 +79,7 @@ else
   run_dir="simplified/results/checkpoints/${model_slug}/training"
   save_frequency="5"
 fi
+run_dir="${PPP_RUN_DIR:-$run_dir}"
 if [[ "$simulator" == "gemini" && "$mode" == "execute" && -z "${GEMINI_API_KEY:-}" ]]; then
   echo "GEMINI_API_KEY is required for a live simulator run." >&2
   exit 2
@@ -111,7 +112,10 @@ command=(
   actor_rollout_ref.rollout.n=8
   actor_rollout_ref.rollout.tensor_model_parallel_size=1
   actor_rollout_ref.rollout.agent.num_workers=1
-  actor_rollout_ref.rollout.gpu_memory_utilization=0.35
+  # The colocated 4B actor leaves about 20 GiB free even on an 80 GiB H100.
+  # vLLM interprets this fraction against total device memory, so 0.20 keeps
+  # its requested KV-cache allocation below the observed free-memory ceiling.
+  actor_rollout_ref.rollout.gpu_memory_utilization=0.20
   actor_rollout_ref.rollout.max_num_seqs=1
   actor_rollout_ref.rollout.max_num_batched_tokens=10240
   actor_rollout_ref.rollout.prompt_length=6144
@@ -149,6 +153,9 @@ command=(
   data.max_response_length=4096
   data.return_raw_chat=True
   +actor_rollout_ref.rollout.plugin.workspace_root=simplified/workspaces
+  # Vendored FoldGRPO writes this compatibility label into each rollout
+  # batch even though the simplified agent loop does not branch on it.
+  +actor_rollout_ref.rollout.plugin.workflow=search
   +actor_rollout_ref.rollout.plugin.max_turn=8
   +actor_rollout_ref.rollout.plugin.turn_max_new_tokens=512
   +actor_rollout_ref.rollout.plugin.simulator="$simulator"
@@ -187,7 +194,81 @@ if [[ "$mode" == "print" ]]; then
   exit 0
 fi
 
-prepared_dir="simplified/results/training/prepared"
+ppp_python="${PPP_PYTHON:-python3}"
+if [[ -n "${PPP_RAY_CLI:-}" ]]; then
+  ray_cli="$PPP_RAY_CLI"
+elif [[ "$ppp_python" == */* ]]; then
+  ray_cli="$(dirname "$ppp_python")/ray"
+else
+  ray_cli="$(command -v ray || true)"
+fi
+nvidia_smi="${PPP_NVIDIA_SMI:-$(command -v nvidia-smi || true)}"
+gpu_idle_attempts="${PPP_GPU_IDLE_ATTEMPTS:-15}"
+gpu_idle_interval="${PPP_GPU_IDLE_INTERVAL_SECONDS:-1}"
+
+stop_ray_runtime() {
+  "$ray_cli" stop --force >/dev/null 2>&1
+}
+
+wait_for_idle_gpu() {
+  [[ -n "$nvidia_smi" ]] || return 0
+  local attempt compute_pids raw_pids
+  for ((attempt = 1; attempt <= gpu_idle_attempts; attempt++)); do
+    if ! raw_pids="$(
+      "$nvidia_smi" \
+        --query-compute-apps=pid \
+        --format=csv,noheader,nounits 2>/dev/null
+    )"; then
+      echo "Unable to inspect GPU compute processes with $nvidia_smi." >&2
+      return 1
+    fi
+    compute_pids="$(printf '%s' "$raw_pids" | tr '\n' ' ' | xargs)"
+    if [[ -z "$compute_pids" ]]; then
+      return 0
+    fi
+    if ((attempt < gpu_idle_attempts)); then
+      sleep "$gpu_idle_interval"
+    fi
+  done
+  echo "GPU compute processes remain after Ray cleanup: $compute_pids" >&2
+  return 1
+}
+
+cleanup_paid_runtime() {
+  local status=$?
+  local cleanup_failed="false"
+  trap - EXIT INT TERM
+  if ! stop_ray_runtime; then
+    echo "WARN: failed to stop the Ray runtime during cleanup." >&2
+    cleanup_failed="true"
+  fi
+  if ! wait_for_idle_gpu; then
+    echo "WARN: GPU cleanup did not complete; terminate the instance." >&2
+    cleanup_failed="true"
+  fi
+  if [[ "$status" -eq 0 && "$cleanup_failed" == "true" ]]; then
+    status=2
+  fi
+  exit "$status"
+}
+
+# A failed Ray driver can leave vLLM engine processes alive after the shell
+# exits. Start from an idle dedicated host and clean up on every exit path.
+if [[ ! -x "$ray_cli" ]]; then
+  echo "Ray CLI is unavailable: $ray_cli" >&2
+  exit 2
+fi
+trap cleanup_paid_runtime EXIT INT TERM
+if ! stop_ray_runtime; then
+  echo "Failed to stop the existing Ray runtime; refusing paid execution." >&2
+  exit 2
+fi
+if ! wait_for_idle_gpu; then
+  echo "Refusing to start a paid run on a contaminated GPU." >&2
+  exit 2
+fi
+
+prepared_dir="${PPP_PREPARED_DIR:-simplified/results/training/prepared}"
 resume_probe="false"
 if compgen -G "${run_dir}/global_step_*" >/dev/null; then
   resume_probe="true"
@@ -213,7 +294,7 @@ export VERL_FILE_LOGGER_PATH="${run_dir}/training-metrics.jsonl"
 ppp_run_started_at="$(date +%s)"
 "${command[@]}"
 ppp_run_finished_at="$(date +%s)"
-"${PPP_PYTHON:-python3}" -m ppp_simplified.training_cli summarize-run \
+"$ppp_python" -m ppp_simplified.training_cli summarize-run \
   --run-dir "$run_dir" \
   --compute-seconds "$((ppp_run_finished_at - ppp_run_started_at))" \
   --hourly-usd 1.09

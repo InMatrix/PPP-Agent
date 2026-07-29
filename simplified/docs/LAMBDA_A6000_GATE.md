@@ -23,6 +23,7 @@ From the A6000 host, clone the desired branch and run the primary bootstrap:
 git clone <YOUR_PPP_AGENT_REMOTE> PPP-Agent
 cd PPP-Agent
 git switch codex/ppp-rl-4b
+sudo apt-get install -y python3.11-dev
 bash simplified/scripts/lambda_a6000_gate.sh --bootstrap --model qwen35
 ```
 
@@ -76,6 +77,14 @@ DAPO backward/optimizer step, and checkpoint save. Inspect the rollout
 artifact, peak memory, checkpoint, and console metrics before proceeding.
 The command also writes scalar metrics, sanitized trajectories, a grouped
 training report, and a Markdown summary under the compatibility run directory.
+
+The paid launcher assumes a dedicated Lambda instance. Before training it
+stops the current user's existing Ray runtime, waits up to 15 seconds for all
+GPU compute PIDs to disappear, and refuses to continue on a contaminated GPU.
+An exit trap stops Ray after success, failure, or interruption so orphaned
+vLLM engine processes cannot consume memory in the next attempt. Do not use
+this launcher on a shared host where another job intentionally owns Ray.
+
 Run the same guarded one-step command a second time and confirm the log resumes
 from `global_step_1`; the launcher records that successful reload. Do this
 before the live simulator gate.
@@ -135,6 +144,12 @@ Stop the A6000 attempt and record its doctor and training output if:
 
 Only then launch one H100 80 GB and repeat the same gate. Do not solve a memory
 failure by weakening the eight-rollout learning objective.
+
+The first H100 fallback probe showed that a colocated Qwen3-4B actor left about
+20 GiB free. vLLM interprets `gpu_memory_utilization` against total device
+memory, so the launcher reserves 20% (about 15.8 GiB on an 80 GiB H100) for
+rollout rather than the original 35%. Group size, context limits, and training
+semantics are unchanged.
 
 The scripts encode BF16 base weights, rank-16 LoRA, 4K generated tokens, and
 eight turns, but local preparation does not prove their combined GPU memory

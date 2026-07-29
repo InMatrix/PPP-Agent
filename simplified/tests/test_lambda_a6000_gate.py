@@ -54,6 +54,10 @@ def test_lambda_doctor_checks_the_exact_async_rollout_contract():
 
     assert "vllm_async_server import vLLMReplica" in source
     assert 'if "enable_log_requests" not in async_llm_parameters:' in source
+    assert "inspect.signature(init_app_state).parameters" in source
+    assert '"vllm_config" in app_state_parameters' in source
+    assert "if not app_state_supported:" in source
+    assert 'pathlib.Path(sysconfig.get_path("include")) / "Python.h"' in source
 
 
 def test_vendored_verl_has_transformers_five_vision_alias():

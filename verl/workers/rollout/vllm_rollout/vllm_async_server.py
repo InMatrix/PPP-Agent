@@ -49,7 +49,7 @@ from vllm.v1.executor.abstract import Executor
 
 from verl.single_controller.ray import RayClassWithInitArgs
 from verl.utils.config import omega_conf_to_dataclass
-from verl.utils.vllm_compat import resolve_enable_log_requests
+from verl.utils.vllm_compat import initialize_app_state, resolve_enable_log_requests
 from verl.utils.vllm.vllm_fp8_utils import apply_vllm_fp8_patches
 from verl.workers.config import HFModelConfig, RolloutConfig
 from verl.workers.rollout.replica import RolloutMode, RolloutReplica, TokenOutput
@@ -366,7 +366,13 @@ class vLLMHttpServerBase:
         await engine_client.reset_mm_cache()
 
         app = build_app(args)
-        await init_app_state(engine_client, vllm_config, app.state, args)
+        await initialize_app_state(
+            init_app_state,
+            engine_client,
+            vllm_config,
+            app.state,
+            args,
+        )
         if self.replica_rank == 0 and self.node_rank == 0:
             logger.info(f"Initializing a V1 LLM engine with config: {vllm_config}")
 

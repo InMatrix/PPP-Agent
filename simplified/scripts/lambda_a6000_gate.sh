@@ -72,6 +72,15 @@ if [[ "$mode" == "bootstrap" ]]; then
     echo "Python 3.11 is required. Install it before bootstrapping." >&2
     exit 1
   }
+  python3.11 - <<'PY' || {
+import pathlib
+import sysconfig
+
+raise SystemExit(not (pathlib.Path(sysconfig.get_path("include")) / "Python.h").is_file())
+PY
+    echo "Python 3.11 development headers are required. Install python3.11-dev before bootstrapping." >&2
+    exit 1
+  }
   # A model mode gets its own environment. Refusing to reuse a directory keeps
   # the vLLM/Transformers 5 primary stack from being mixed with the
   # Transformers 4 fallback after a failed compatibility attempt.
@@ -122,7 +131,9 @@ export PYTHONPATH="$repo_root${PYTHONPATH:+:$PYTHONPATH}"
 "$venv_dir/bin/python" - <<'PY'
 import importlib
 import inspect
+import pathlib
 import sys
+import sysconfig
 
 required = ("torch", "transformers", "vllm", "peft", "ray", "hydra", "omegaconf", "ppp_simplified", "verl")
 missing = []
@@ -137,6 +148,13 @@ if missing:
     print("FAIL: required imports:\n" + "\n".join(missing), file=sys.stderr)
     raise SystemExit(1)
 
+python_header = pathlib.Path(sysconfig.get_path("include")) / "Python.h"
+if not python_header.is_file():
+    raise SystemExit(
+        f"FAIL: missing {python_header}; install the Python development headers."
+    )
+print(f"python.headers={python_header}")
+
 import torch
 if not torch.cuda.is_available():
     raise SystemExit("FAIL: PyTorch cannot see CUDA.")
@@ -146,6 +164,7 @@ print(f"torch.cuda={torch.version.cuda}; device={torch.cuda.get_device_name(0)}"
 # by the vendored server. Generic package imports did not catch these API
 # drifts before paid GPU initialization.
 from vllm.v1.engine.async_llm import AsyncLLM
+from vllm.entrypoints.openai.api_server import init_app_state
 from verl.workers.rollout.vllm_rollout.vllm_async_server import vLLMReplica
 
 async_llm_parameters = inspect.signature(AsyncLLM.from_vllm_config).parameters
@@ -154,7 +173,20 @@ if "enable_log_requests" not in async_llm_parameters:
         "FAIL: AsyncLLM.from_vllm_config lacks enable_log_requests; "
         "the vendored rollout adapter and installed vLLM are incompatible."
     )
-print("verl.async_rollout=imported; AsyncLLM.enable_log_requests=supported")
+app_state_parameters = inspect.signature(init_app_state).parameters
+app_state_supported = len(app_state_parameters) == 3 or (
+    len(app_state_parameters) == 4 and "vllm_config" in app_state_parameters
+)
+if not app_state_supported:
+    raise SystemExit(
+        "FAIL: init_app_state has an unsupported signature: "
+        f"{inspect.signature(init_app_state)}"
+    )
+print(
+    "verl.async_rollout=imported; "
+    "AsyncLLM.enable_log_requests=supported; "
+    f"init_app_state.args={len(app_state_parameters)}"
+)
 PY
 
 echo "PASS: host is ready for the next compatibility command."
