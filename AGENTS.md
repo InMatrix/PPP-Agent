@@ -28,7 +28,9 @@ After every new compatibility, training, or evaluation run, create or update a
 sanitized report under `simplified/docs/run-reports/` using
 `TEMPLATE.md`. Write the report before terminating a paid instance whenever
 possible, and do not start the next paid run until the previous run is
-documented.
+documented. In the same update, revise `simplified/docs/PHASE_PLAN.md` with the
+stage reached, current blocker, evidence or artifact links, budget information
+when available, and the exact next gate.
 
 Each report should record the tested commit and configuration, real versus
 deterministic or mocked components, stages reached, available timing, memory,

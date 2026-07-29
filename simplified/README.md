@@ -4,6 +4,10 @@ This directory proves the PPP-Agent stack with one real function-localization
 episode before we build more course modules. It deliberately avoids VERL, Ray,
 distributed training, and a repository HTTP service.
 
+The later teaching-scale RL phase is tracked in
+[`docs/PHASE_PLAN.md`](docs/PHASE_PLAN.md), with per-run evidence under
+[`docs/run-reports/`](docs/run-reports/README.md).
+
 The vertical slice still exercises the important boundaries:
 
 1. Load a real vague/preference-conditioned row from the downloaded parquet.

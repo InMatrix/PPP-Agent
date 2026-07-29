@@ -11,6 +11,8 @@ Retrospective evidence from the nine GH200 compatibility attempts is indexed
 in [`run-reports/README.md`](run-reports/README.md). Use
 [`run-reports/TEMPLATE.md`](run-reports/TEMPLATE.md) for future attempts so a
 sanitized report is durable before the instance is terminated.
+The live status, next gate, and phase-level acceptance criteria are maintained
+in [`PHASE_PLAN.md`](PHASE_PLAN.md).
 
 ## Current GH200 gate
 

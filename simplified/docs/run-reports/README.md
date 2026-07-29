@@ -5,6 +5,10 @@ bring the teaching-scale PPP reinforcement-learning stack up on one Lambda
 GH200. They are intended as source material for a later retrospective on the
 development process, not as benchmark results.
 
+The current execution status and next planned gate live in
+[`../PHASE_PLAN.md`](../PHASE_PLAN.md). After every new run, update both its
+individual report and that plan.
+
 The Lambda instance was terminated before its ignored run directory was copied
 off-host. The individual reports therefore distinguish:
 
