@@ -137,9 +137,9 @@ class CallLLM(LLMClass):  # Call LLM in Verl RL env
         max_new_tokens = max_len - len(input_ids)
         # This is used to avoid repetitive generation.
         if hasattr(self.config, 'plugin') and getattr(self.config.plugin, 'turn_max_new_tokens', -1) > 0:
-            max_tokens = min(max_new_tokens, self.config.plugin.turn_max_new_tokens)
+            max_new_tokens = min(max_new_tokens, self.config.plugin.turn_max_new_tokens)
         if 'max_new_tokens' in kwargs:
-            max_new_tokens = min(max_new_tokens, kwargs['max_new_tokens'])
+            max_new_tokens = min(max_new_tokens, kwargs.pop('max_new_tokens'))
 
         if max_new_tokens < 10:
             print(f"[DEBUG] max_new_tokens {max_new_tokens}, skip rollout")
@@ -152,6 +152,9 @@ class CallLLM(LLMClass):  # Call LLM in Verl RL env
             'temperature': sampling_params.get('temperature', 1.0),
             'top_p': sampling_params.get('top_p', 1.0),
             'max_tokens': max_new_tokens,
+            # Verl needs the sampled-token log probabilities as the old policy
+            # baseline for the subsequent policy update.
+            'logprobs': True,
         }
 
         output = await self.server_manager.generate(

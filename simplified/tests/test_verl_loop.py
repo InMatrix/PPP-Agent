@@ -35,6 +35,12 @@ def test_verl_loop_class_is_worker_importable_from_hydra_config():
     assert rollout_source.count("sanitize_action_arguments(") >= 4
 
 
+def test_vendored_rollout_client_requests_logprobs_and_honors_turn_cap():
+    source = (Path(__file__).parents[2] / "agents" / "utils.py").read_text()
+    assert "max_new_tokens = min(max_new_tokens, self.config.plugin.turn_max_new_tokens)" in source
+    assert "'logprobs': True" in source
+
+
 def test_parse_action_keeps_navigation_v2_tool_contract():
     action = _parse_action(
         json.dumps(
