@@ -226,9 +226,14 @@ Before authorizing another paid run:
    storage.
 2. Create the next numbered report from
    [`run-reports/TEMPLATE.md`](run-reports/TEMPLATE.md).
-3. Update the gate table, current state, exact next gate, budget ledger, and
+3. Conduct trajectory-level error analysis before choosing a fix or next gate.
+   For an eight-rollout group, inspect all eight trajectories and report action
+   parsing, tool use, navigation, finish validation and correction, termination,
+   reward components, masking or loss eligibility, and recurring failure
+   categories. Label direct evidence separately from inference.
+4. Update the gate table, current state, exact next gate, budget ledger, and
    `Last updated` line in this document.
-4. Link the report from [`run-reports/README.md`](run-reports/README.md).
-5. Commit the report and plan update with the corrective change when practical;
+5. Link the report from [`run-reports/README.md`](run-reports/README.md).
+6. Commit the report and plan update with the corrective change when practical;
    otherwise use a dedicated evidence commit.
-6. Only then decide whether the next paid run is justified.
+7. Only then decide whether the next paid run is justified.

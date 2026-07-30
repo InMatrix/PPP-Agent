@@ -28,6 +28,24 @@ whether these gates completed:
 Never include API keys, hidden simulator context, raw repository contents, or
 unsanitized observations.
 
+## Trajectory-level error analysis
+
+Analyze every trajectory for an eight-rollout group. For larger evaluations,
+inspect all failures plus a representative stratified sample.
+
+- Model calls, parsed actions, and invalid-action categories:
+- Tool-use and repository-navigation patterns:
+- Finish validity and correction behavior:
+- Termination reasons:
+- Reward components and within-group variance:
+- Masked or otherwise loss-ineligible trajectories:
+- Differences between successful and failed trajectories:
+- Recurring failure categories:
+- Directly observed versus inferred evidence:
+- Evidence unavailable after sanitization or interruption:
+
+Do not select the next intervention from aggregate reward or loss alone.
+
 ## Failure and diagnosis
 
 Quote only the minimal sanitized exception. Separate observed facts from

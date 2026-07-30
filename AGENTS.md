@@ -38,3 +38,13 @@ cost and artifact evidence, the minimal failure and diagnosis, and the
 resulting fix commit once known. Clearly label unavailable evidence and
 inference. Never include credentials, hidden simulator context, raw repository
 contents, or unsanitized observations.
+
+Every run must receive trajectory-level error analysis before selecting or
+implementing the next intervention. Inspect every trajectory when the group is
+small; otherwise inspect all failures plus a representative stratified sample.
+At minimum, report action parsing and tool use, navigation behavior, finish
+validity and correction behavior, termination reasons, reward components,
+masking or loss eligibility, and recurring failure categories. Compare
+successful and failed trajectories, distinguish counts derived directly from
+artifacts from inferred counts, and state evidence that cannot be recovered.
+Do not explain a run using aggregate reward or loss alone.
