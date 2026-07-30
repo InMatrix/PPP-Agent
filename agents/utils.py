@@ -147,15 +147,18 @@ class CallLLM(LLMClass):  # Call LLM in Verl RL env
 
         uid = kwargs.pop('uid', None) or uuid4().hex
 
-        sampling_params = kwargs.pop('sampling_params', None) or {}
+        requested_sampling_params = kwargs.pop('sampling_params', None) or {}
         sampling_params = {
-            'temperature': sampling_params.get('temperature', 1.0),
-            'top_p': sampling_params.get('top_p', 1.0),
+            'temperature': requested_sampling_params.get('temperature', 1.0),
+            'top_p': requested_sampling_params.get('top_p', 1.0),
             'max_tokens': max_new_tokens,
             # Verl needs the sampled-token log probabilities as the old policy
             # baseline for the subsequent policy update.
             'logprobs': True,
         }
+        structured_outputs = requested_sampling_params.get('structured_outputs')
+        if structured_outputs is not None:
+            sampling_params['structured_outputs'] = structured_outputs
 
         output = await self.server_manager.generate(
             request_id=uid,
@@ -166,6 +169,18 @@ class CallLLM(LLMClass):  # Call LLM in Verl RL env
 
         if output is None or len(output.token_ids) == 0:
             return None
+        if not hasattr(output, 'log_probs') or output.log_probs is None:
+            raise RuntimeError(
+                "vLLM did not return the requested sampled-token log "
+                "probabilities."
+            )
+        response_log_probs = output.log_probs
+        if len(response_log_probs) != len(output.token_ids):
+            raise RuntimeError(
+                "vLLM returned sampled token IDs and log probabilities with "
+                f"different lengths: {len(output.token_ids)} tokens versus "
+                f"{len(response_log_probs)} log probabilities."
+            )
 
         response_text = await self.loop.run_in_executor( None, lambda: self.tokenizer.decode(output.token_ids, skip_special_tokens=True))
 
@@ -174,8 +189,7 @@ class CallLLM(LLMClass):  # Call LLM in Verl RL env
                 "message": {
                     "content": response_text,
                     "raw_output_ids": output.token_ids,
-                    "response_log_probs": output.log_probs if hasattr(output, 'log_probs') else [0.0] * len(
-                        output.token_ids),
+                    "response_log_probs": response_log_probs,
                     "extra_data": {"input_ids": input_ids},
                     "metrics": {}
                 }
@@ -390,13 +404,23 @@ class Agent(AgentContext):
         self.retry_cjk = getattr(config.plugin, "retry_cjk", 0)
         self.info_cache = {}
 
-    async def step(self, max_new_tokens=None, retry_cjk=0):
+    async def step(
+        self,
+        max_new_tokens=None,
+        retry_cjk=0,
+        sampling_params=None,
+    ):
         prompt = self.context()
         max_len = self.prompt_ids_len + self.config.response_length
         if max_new_tokens is not None:
             max_len = min(len(prompt) + max_new_tokens, 131072)
         completion = await self.llm_client.create_completion(
-            prompt, uid=self.context_uid, max_len=max_len, messages=self.chat)
+            prompt,
+            uid=self.context_uid,
+            max_len=max_len,
+            messages=self.chat,
+            sampling_params=sampling_params,
+        )
         if completion is None:
             return None
         response = completion["choices"][0]["message"]["content"]

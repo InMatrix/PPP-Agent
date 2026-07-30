@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -16,7 +17,12 @@ from uuid import uuid4
 
 from .data import episode_from_training_payload
 from .models import AgentAction
-from .providers import ACTION_SCHEMA_V2, TOOL_NAMES_V2, parse_json_object
+from .providers import (
+    ACTION_SCHEMA_V2,
+    TOOL_NAMES_V2,
+    action_json_schema,
+    parse_json_object,
+)
 from .rewards import calculate_reward
 from .runner import SYSTEM_PROMPT_V2
 from .simulator import (
@@ -69,16 +75,44 @@ def _plugin_value(config: Any, name: str, default: Any) -> Any:
     return getattr(plugin, name, default)
 
 
+class ActionContractError(ValueError):
+    """A sanitized, countable action-contract violation."""
+
+    def __init__(self, category: str, message: str) -> None:
+        super().__init__(message)
+        self.category = category
+
+
 def _parse_action(text: str, allowed_tools: tuple[str, ...]) -> AgentAction:
-    payload = parse_json_object(text)
+    try:
+        payload = parse_json_object(text)
+    except Exception as error:
+        raise ActionContractError(
+            "invalid_json",
+            "Return exactly one JSON object matching the action schema.",
+        ) from error
     tool = str(payload.get("tool") or "")
+    if not tool:
+        raise ActionContractError(
+            "missing_tool",
+            "The action object must contain a non-empty tool.",
+        )
     if tool not in allowed_tools:
-        raise ValueError(
+        raise ActionContractError(
+            "disallowed_tool",
             f"Tool {tool!r} is not allowed; choose one of {', '.join(allowed_tools)}."
         )
     arguments = payload.get("arguments")
     if not isinstance(arguments, dict):
-        raise ValueError("Action arguments must be a JSON object.")
+        raise ActionContractError(
+            "arguments_not_object",
+            "Action arguments must be a JSON object.",
+        )
+    if not isinstance(payload.get("reasoning"), str):
+        raise ActionContractError(
+            "reasoning_not_string",
+            "Action reasoning must be a string.",
+        )
     return AgentAction(
         tool=tool,  # type: ignore[arg-type]
         arguments=arguments,
@@ -195,8 +229,14 @@ async def run_simplified_rollout(
     duplicate_retry_used: set[int] = set()
     logical_turn = 1
     model_calls = 0
+    parsed_actions = 0
+    invalid_action_categories: Counter[str] = Counter()
+    schema_constrained_model_calls = 0
     duplicate_suppressed = 0
     finish_correction_attempted = False
+    finish_correction_pending = False
+    rejected_finish_functions: tuple[str, ...] = ()
+    finish_correction_parse_failed = False
     finalization_retry_attempted = False
     finish_validation_passed: bool | None = None
     invalid_predictions: tuple[str, ...] = ()
@@ -208,14 +248,36 @@ async def run_simplified_rollout(
         and model_calls < 18
         and tools.final_answer is None
     ):
+        correction_call = finish_correction_pending
+        allowed_tools = (
+            ("finish",)
+            if correction_call or logical_turn == 8
+            else TOOL_NAMES_V2
+        )
+        attempt = (
+            2
+            if correction_call
+            or logical_turn in duplicate_retry_used
+            or (logical_turn == 8 and finalization_retry_attempted)
+            else 1
+        )
+        finish_correction_pending = False
         model_calls += 1
-        text = await agent.step(max_new_tokens=512)
+        schema_constrained_model_calls += 1
+        text = await agent.step(
+            max_new_tokens=512,
+            sampling_params={
+                "structured_outputs": {
+                    "json": action_json_schema(allowed_tools),
+                }
+            },
+        )
         if text is None:
             break
-        allowed_tools = ("finish",) if logical_turn == 8 else TOOL_NAMES_V2
         try:
             action = _parse_action(text, allowed_tools)
-        except Exception as error:
+        except ActionContractError as error:
+            invalid_action_categories[error.category] += 1
             observation = f"Invalid action: {error}"
             agent.append(
                 {
@@ -226,11 +288,36 @@ async def run_simplified_rollout(
                     ),
                 }
             )
+            sanitized_trajectory.append(
+                {
+                    "turn": logical_turn,
+                    "attempt": attempt,
+                    "tool": "<invalid>",
+                    "arguments": {},
+                    "executed": False,
+                    "invalid_action_category": error.category,
+                    "observation": "<invalid action feedback redacted>",
+                }
+            )
+            if correction_call:
+                # The correction allowance is exactly one model call. If that
+                # call still violates the action contract, retain the rejected
+                # first finish as the only scorable prediction available.
+                tools.accept_finish(rejected_finish_functions)
+                finish_validation_passed = False
+                finish_correction_parse_failed = True
+                termination = (
+                    "deadline_finish"
+                    if logical_turn == 8
+                    else "natural_finish"
+                )
+                break
             if logical_turn == 8 and not finalization_retry_attempted:
                 finalization_retry_attempted = True
                 continue
             logical_turn += 1
             continue
+        parsed_actions += 1
 
         signature = json.dumps(
             {"tool": action.tool, "arguments": action.arguments},
@@ -249,7 +336,7 @@ async def run_simplified_rollout(
             sanitized_trajectory.append(
                 {
                     "turn": logical_turn,
-                    "attempt": 2 if logical_turn in duplicate_retry_used else 1,
+                    "attempt": attempt,
                     "tool": action.tool,
                     "arguments": sanitize_action_arguments(
                         action.tool,
@@ -277,6 +364,8 @@ async def run_simplified_rollout(
                 prefix = ""
             if validation_errors and not finish_correction_attempted:
                 finish_correction_attempted = True
+                finish_correction_pending = True
+                rejected_finish_functions = functions
                 invalid_predictions = tuple(item.value for item in validation_errors)
                 agent.append(
                     {
@@ -296,7 +385,7 @@ async def run_simplified_rollout(
                 sanitized_trajectory.append(
                     {
                         "turn": logical_turn,
-                        "attempt": 1,
+                        "attempt": attempt,
                         "tool": action.tool,
                         "arguments": sanitize_action_arguments(
                             action.tool,
@@ -320,7 +409,7 @@ async def run_simplified_rollout(
             sanitized_trajectory.append(
                 {
                     "turn": logical_turn,
-                    "attempt": 2 if finish_correction_attempted else 1,
+                    "attempt": attempt,
                     "tool": action.tool,
                     "arguments": sanitize_action_arguments(
                         action.tool,
@@ -381,9 +470,19 @@ async def run_simplified_rollout(
         # converts True into a zero policy-loss mask for the whole rollout.
         "mask_rollout": termination == "turn_limit",
         "model_calls": model_calls,
+        "parsed_actions": parsed_actions,
+        "action_parse_rate": (
+            parsed_actions / model_calls if model_calls else 0.0
+        ),
+        "invalid_action_count": sum(invalid_action_categories.values()),
+        "invalid_action_categories": dict(
+            sorted(invalid_action_categories.items())
+        ),
+        "schema_constrained_model_calls": schema_constrained_model_calls,
         "duplicate_actions_suppressed": duplicate_suppressed,
         "finish_validation_passed": finish_validation_passed,
         "finish_correction_attempted": finish_correction_attempted,
+        "finish_correction_parse_failed": finish_correction_parse_failed,
         "invalid_predictions": list(invalid_predictions),
         "policy_version": "navigation-v2",
         "tool_schema_version": "v2",

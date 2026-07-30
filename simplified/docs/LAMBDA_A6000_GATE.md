@@ -14,16 +14,19 @@ sanitized report is durable before the instance is terminated.
 The live status, next gate, and phase-level acceptance criteria are maintained
 in [`PHASE_PLAN.md`](PHASE_PLAN.md).
 
-## Current GH200 gate
+## Next GH200 gate
 
-The next attempt uses one GH200 96 GB. Its extra HBM gives the colocated actor
-and rollout stack more headroom than the 80 GB H100 probe, while its Grace CPU
-changes the host architecture from x86-64 to ARM64. Treat this as a fresh
-package-compatibility result; do not copy the previous H100 virtual
-environment.
+The next attempt uses `Qwen/Qwen3.5-4B` on one GH200 96 GB. Its extra HBM gives
+the colocated actor and rollout stack more headroom than the 80 GB H100 probe,
+while its Grace CPU changes the host architecture from x86-64 to ARM64. Treat
+this as a fresh model and package-compatibility result. Create a separate
+Transformers 5/vLLM environment and leave the proven Qwen3 fallback
+environment unchanged.
 
 Keep the repository on `codex/ppp-rl-4b` and ensure it is pushed or otherwise
-available to the GPU host. Set a one-hour timer. Lambda bills a running
+available to the GPU host. This branch passes the shared action JSON Schema
+through the raw Verl/vLLM rollout path and directly records sanitized
+invalid-action categories. Set a one-hour timer. Lambda bills a running
 instance even when no command is active, so terminate it manually as soon as
 the gate passes or fails.
 
@@ -38,8 +41,8 @@ python3.11 --version
 ```
 
 Expected results are `aarch64`, a GPU name containing `GH200`, at least 90,000
-MiB of GPU memory, and Python 3.11. Then clone and bootstrap the Qwen3 fallback
-stack that passed the earlier API-compatibility work:
+MiB of GPU memory, and Python 3.11. Then clone and bootstrap the Qwen3.5 primary
+stack:
 
 ```bash
 git clone <YOUR_PPP_AGENT_REMOTE> PPP-Agent
@@ -49,8 +52,8 @@ sudo apt-get install -y python3.11-dev
 bash simplified/scripts/lambda_a6000_gate.sh \
   --bootstrap \
   --accelerator gh200 \
-  --model qwen3 \
-  --venv simplified/.venv-lambda-qwen3
+  --model qwen35 \
+  --venv simplified/.venv-lambda-qwen35
 ```
 
 Hardware validation runs before any package download. Native and compiled
@@ -61,15 +64,13 @@ any other required wheel, pip must fail rather than begin a paid source
 compilation. Save that error, terminate the instance, and decide separately
 whether a documented container or source-build path is worthwhile.
 
-The script creates `simplified/.venv-lambda-qwen3`. The vendored `verl/` source
+The script creates `simplified/.venv-lambda-qwen35`. The vendored `verl/` source
 has no independent package manifest, so the script exports the repository root
 through `PYTHONPATH` instead of pretending it is a published dependency.
 
-This gate uses `vllm==0.12.0` and Transformers 4.x with
-`Qwen/Qwen3-4B`. PyPI resolves vLLM's ARM64 dependency to a CPU-only PyTorch
-wheel, so the GH200 path immediately replaces it with the ABI-matching
-`torch==2.9.0+cu128` stack from PyTorch's official CUDA 12.8 index. This keeps
-the compiled vLLM/PyTorch pair aligned without compiling either package.
+This gate uses `vllm==0.21.0` and Transformers 5.x with
+`Qwen/Qwen3.5-4B`. It intentionally does not reuse the vLLM 0.12/Transformers
+4 environment that established the Qwen3 fallback.
 
 NVIDIA's `nvidia-cusparselt-cu12==0.7.1` ARM64 wheel contains an internal SBSA
 tag even though its download is labeled AArch64. `pip check` reports that
@@ -86,27 +87,28 @@ To rerun only read-only host checks:
 bash simplified/scripts/lambda_a6000_gate.sh \
   --doctor \
   --accelerator gh200 \
-  --model qwen3 \
-  --venv simplified/.venv-lambda-qwen3
+  --model qwen35 \
+  --venv simplified/.venv-lambda-qwen35
 ```
 
 The doctor prints host architecture, GPU model, memory, and driver
 information; checks for at least 90,000 MiB; confirms CUDA is visible to
 PyTorch; and imports the exact asynchronous vLLM/Verl path used during
-training. Bootstrap also runs `pip check`. Neither command reads `.env` or
-`GEMINI_API_KEY`.
+training. It also constructs a finish-only structured-output request with
+chosen-token log probabilities enabled. Bootstrap runs `pip check`. Neither
+command reads `.env` or `GEMINI_API_KEY`.
 
 ## Run the gates
 
 Prepare the frozen data and inspect the exact training command:
 
 ```bash
-simplified/.venv-lambda-qwen3/bin/ppp-train doctor
-simplified/.venv-lambda-qwen3/bin/ppp-train prepare
+simplified/.venv-lambda-qwen35/bin/ppp-train doctor
+simplified/.venv-lambda-qwen35/bin/ppp-train prepare
 
 # Print only; this does not construct an optimizer.
-simplified/.venv-lambda-qwen3/bin/ppp-train train \
-  --steps 1 --simulator deterministic --model qwen3
+simplified/.venv-lambda-qwen35/bin/ppp-train train \
+  --steps 1 --simulator deterministic --model qwen35
 ```
 
 Only after explicit paid-run confirmation, execute the one-step compatibility
@@ -114,13 +116,13 @@ gate:
 
 ```bash
 export CONFIRM_PAID_TRAINING=I_UNDERSTAND_LAMBDA_IS_BILLING
-simplified/.venv-lambda-qwen3/bin/ppp-train train \
-  --steps 1 --simulator deterministic --model qwen3 --execute
+simplified/.venv-lambda-qwen35/bin/ppp-train train \
+  --steps 1 --simulator deterministic --model qwen35 --execute
 ```
 
-That command must complete a model forward/generation pass, eight sequential
-rollouts, old-policy log probabilities, FoldGRPO advantage calculation, one
-DAPO backward/optimizer step, and checkpoint save. Inspect the rollout
+That command must complete a schema-constrained model forward/generation pass,
+eight sequential rollouts, old-policy log probabilities, FoldGRPO advantage
+calculation, one DAPO backward/optimizer step, and checkpoint save. Inspect the rollout
 artifact, peak memory, checkpoint, and console metrics before proceeding.
 The command also writes scalar metrics, sanitized trajectories, a grouped
 training report, and a Markdown summary under the compatibility run directory.
@@ -142,24 +144,27 @@ server in one terminal, then use the no-optimizer live-group command in a
 second terminal:
 
 ```bash
-vllm serve Qwen/Qwen3-4B \
+vllm serve Qwen/Qwen3.5-4B \
   --max-model-len 10240 --gpu-memory-utilization 0.20
-ppp-train live-group --model qwen3
+ppp-train live-group --model qwen35
 ```
 
 `live-group` produces exactly eight trajectories with distinct inference
 seeds, uses the cached Gemini simulator, and exports only redacted repository
 observations.
 
-When the first optimizer group is flat, verify one effective update before a
-longer run by continuing the ordinary checkpointed dataloader to total step 2:
+When the first optimizer group is flat, do not infer the cause from aggregate
+loss. Inspect all eight sanitized trajectories, including parse categories,
+tool use, finish validation, termination, reward components, and masking. Only
+then decide whether to verify one effective update by continuing the ordinary
+checkpointed dataloader to total step 2:
 
 ```bash
 source ~/.config/ppp-agent/gemini.env
 export CONFIRM_PAID_TRAINING=I_UNDERSTAND_LAMBDA_IS_BILLING
-export PPP_HOURLY_USD=2.29
-simplified/.venv-lambda-qwen3/bin/ppp-train train \
-  --steps 2 --simulator gemini --model qwen3 --execute
+export PPP_HOURLY_USD=2.29  # Replace if Lambda's displayed rate has changed.
+simplified/.venv-lambda-qwen35/bin/ppp-train train \
+  --steps 2 --simulator gemini --model qwen35 --execute
 ```
 
 This bounded mode only accepts the verified `global_step_1` compatibility
@@ -174,11 +179,11 @@ detached controller. Do not own a 20-step job with a foreground SSH shell:
 ```bash
 source ~/.config/ppp-agent/gemini.env
 export CONFIRM_PAID_TRAINING=I_UNDERSTAND_LAMBDA_IS_BILLING
-export PPP_PYTHON=/home/ubuntu/PPP-Agent/simplified/.venv-lambda-qwen3/bin/python
-export PPP_HOURLY_USD=2.29
+export PPP_PYTHON=/home/ubuntu/PPP-Agent/simplified/.venv-lambda-qwen35/bin/python
+export PPP_HOURLY_USD=2.29  # Replace if Lambda's displayed rate has changed.
 
 bash simplified/scripts/manage_ppp_rl_run.sh start attempt-15 \
-  --steps 20 --simulator gemini --model qwen3
+  --steps 20 --simulator gemini --model qwen35
 ```
 
 `start` prints the worker PID and returns after detaching stdin, stdout, and
@@ -218,18 +223,18 @@ report shows at least 25% non-flat groups, loss and KL are finite, a LoRA
 adapter exists, resume was verified, and projected phase compute is at most
 $45.
 
-## Qwen3.5 primary-stack retry
+## Qwen3 fallback preservation
 
-Qwen3 is the current bounded fallback after Qwen3.5 compatibility work. Do not
-retry the newer hybrid architecture during the GH200 memory gate. If a later
-Qwen3.5 retry is approved, create a separate environment:
+Qwen3 remains the proven bounded fallback. Use it only after the Qwen3.5 gate
+records a failure that would require invasive Verl changes. Create a separate
+environment rather than modifying or reusing the primary stack:
 
 ```bash
 bash simplified/scripts/lambda_a6000_gate.sh \
   --bootstrap \
   --accelerator gh200 \
-  --model qwen35 \
-  --venv simplified/.venv-lambda-qwen35
+  --model qwen3 \
+  --venv simplified/.venv-lambda-qwen3
 ```
 
 Do not mix primary and fallback packages in one virtual environment. The

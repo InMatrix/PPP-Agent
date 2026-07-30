@@ -3,6 +3,8 @@ import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 ROOT = Path(__file__).parents[2]
 COMPAT_PATH = ROOT / "verl/utils/vllm_compat.py"
 
@@ -19,6 +21,8 @@ compat = _load_compat()
 resolve_enable_log_requests = compat.resolve_enable_log_requests
 initialize_app_state = compat.initialize_app_state
 pop_max_tokens = compat.pop_max_tokens
+normalize_structured_outputs = compat.normalize_structured_outputs
+extract_chosen_token_logprobs = compat.extract_chosen_token_logprobs
 
 
 def test_vllm_lora_model_import_supports_new_module_name():
@@ -39,6 +43,9 @@ def test_vllm_utility_imports_support_version_012_modules():
     assert "resolve_enable_log_requests(engine_args)" in source
     assert "enable_log_requests=enable_log_requests" in source
     assert "initialize_app_state(" in source
+    assert "from vllm.sampling_params import StructuredOutputsParams" in source
+    assert "normalize_structured_outputs(" in source
+    assert "extract_chosen_token_logprobs(" in source
 
 
 def test_external_zmq_executor_honors_vllm_non_blocking_execution():
@@ -109,6 +116,65 @@ def test_missing_max_tokens_uses_remaining_context():
         )
         == 4096
     )
+
+
+class FakeStructuredOutputs:
+    def __init__(self, *, json):
+        self.json = json
+
+
+def test_structured_output_transport_dict_becomes_vllm_parameter() -> None:
+    schema = {
+        "type": "object",
+        "properties": {"tool": {"enum": ["finish"]}},
+    }
+    original = {
+        "temperature": 0.2,
+        "structured_outputs": {"json": schema},
+    }
+
+    normalized = normalize_structured_outputs(
+        original,
+        structured_outputs_type=FakeStructuredOutputs,
+    )
+
+    assert original["structured_outputs"] == {"json": schema}
+    assert normalized["temperature"] == 0.2
+    assert isinstance(
+        normalized["structured_outputs"],
+        FakeStructuredOutputs,
+    )
+    assert normalized["structured_outputs"].json == schema
+
+
+def test_structured_output_rejects_unknown_transport_fields() -> None:
+    with pytest.raises(ValueError, match="Unsupported"):
+        normalize_structured_outputs(
+            {"structured_outputs": {"regex": ".*"}},
+            structured_outputs_type=FakeStructuredOutputs,
+        )
+
+
+def test_chosen_logprobs_align_with_sampled_token_ids() -> None:
+    values = extract_chosen_token_logprobs(
+        [7, 11],
+        [
+            {7: SimpleNamespace(logprob=-0.2)},
+            {11: SimpleNamespace(logprob=-0.4)},
+        ],
+    )
+
+    assert values == [-0.2, -0.4]
+    with pytest.raises(RuntimeError, match="different number"):
+        extract_chosen_token_logprobs(
+            [7, 11],
+            [{7: SimpleNamespace(logprob=-0.2)}],
+        )
+    with pytest.raises(RuntimeError, match="omitted"):
+        extract_chosen_token_logprobs(
+            [7],
+            [{8: SimpleNamespace(logprob=-0.2)}],
+        )
 
 
 def test_app_state_initializer_supports_vllm_012_signature():

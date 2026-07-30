@@ -27,6 +27,7 @@ import vllm.entrypoints.cli.serve
 import zmq
 from ray.actor import ActorHandle
 from vllm import SamplingParams
+from vllm.sampling_params import StructuredOutputsParams
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.api_server import (
     build_app,
@@ -51,7 +52,9 @@ from vllm.v1.executor.abstract import Executor
 from verl.single_controller.ray import RayClassWithInitArgs
 from verl.utils.config import omega_conf_to_dataclass
 from verl.utils.vllm_compat import (
+    extract_chosen_token_logprobs,
     initialize_app_state,
+    normalize_structured_outputs,
     pop_max_tokens,
     resolve_enable_log_requests,
 )
@@ -445,6 +448,10 @@ class vLLMHttpServerBase:
         )
         sampling_params["logprobs"] = 0 if sampling_params.pop("logprobs", False) else None
         sampling_params.setdefault("repetition_penalty", self.config.get("repetition_penalty", 1.0))
+        sampling_params = normalize_structured_outputs(
+            sampling_params,
+            structured_outputs_type=StructuredOutputsParams,
+        )
         sampling_params = SamplingParams(max_tokens=max_tokens, **sampling_params)
         prompt_ids = _qwen2_5_vl_dedup_image_tokens(prompt_ids, self.model_config.processor)
         prompt = TokensPrompt(
@@ -474,7 +481,10 @@ class vLLMHttpServerBase:
         token_ids = final_res.outputs[0].token_ids
         log_probs = None
         if sampling_params.logprobs is not None:
-            log_probs = [logprobs[token_ids[i]].logprob for i, logprobs in enumerate(final_res.outputs[0].logprobs)]
+            log_probs = extract_chosen_token_logprobs(
+                token_ids,
+                final_res.outputs[0].logprobs,
+            )
 
         routed_experts = None
         if self.config.enable_rollout_routing_replay:

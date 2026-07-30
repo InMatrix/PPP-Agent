@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -392,8 +393,12 @@ def command_summarize_run(args: argparse.Namespace) -> int:
 
     grouped: dict[str, list[dict[str, Any]]] = {}
     reports = []
+    invalid_action_categories: Counter[str] = Counter()
     for record in records:
         grouped.setdefault(str(record["group_id"]), []).append(record)
+        invalid_action_categories.update(
+            record.get("invalid_action_categories", {})
+        )
         reports.append(
             {
                 "instance_id": record["instance_id"],
@@ -402,12 +407,30 @@ def command_summarize_run(args: argparse.Namespace) -> int:
                 "trajectory": record["sanitized_trajectory"],
                 "termination": record["termination"],
                 "model_calls": record["model_calls"],
+                "parsed_actions": record.get("parsed_actions"),
+                "action_parse_rate": record.get("action_parse_rate"),
+                "invalid_action_count": record.get(
+                    "invalid_action_count",
+                    0,
+                ),
+                "invalid_action_categories": record.get(
+                    "invalid_action_categories",
+                    {},
+                ),
+                "schema_constrained_model_calls": record.get(
+                    "schema_constrained_model_calls",
+                    0,
+                ),
                 "finish_validation_passed": record[
                     "finish_validation_passed"
                 ],
                 "finish_correction_attempted": record[
                     "finish_correction_attempted"
                 ],
+                "finish_correction_parse_failed": record.get(
+                    "finish_correction_parse_failed",
+                    False,
+                ),
                 "invalid_predictions": record["invalid_predictions"],
                 "model_generated_tokens": record["model_generated_tokens"],
                 "environment_tokens": record["environment_tokens"],
@@ -440,6 +463,10 @@ def command_summarize_run(args: argparse.Namespace) -> int:
             }
         )
 
+    total_model_calls = sum(record["model_calls"] for record in records)
+    total_parsed_actions = sum(
+        int(record.get("parsed_actions", 0)) for record in records
+    )
     payload = {
         "schema_version": 1,
         "stage": "training",
@@ -454,7 +481,28 @@ def command_summarize_run(args: argparse.Namespace) -> int:
             "groups": group_metrics,
             "group_size": PPPTrainingConfig().group_size,
             "groups_with_nonzero_reward_variance": nonzero_variance,
-            "model_calls": sum(record["model_calls"] for record in records),
+            "model_calls": total_model_calls,
+            "parsed_actions": total_parsed_actions,
+            "invalid_action_count": sum(
+                int(record.get("invalid_action_count", 0))
+                for record in records
+            ),
+            "invalid_action_categories": dict(
+                sorted(invalid_action_categories.items())
+            ),
+            "schema_constrained_model_calls": sum(
+                int(record.get("schema_constrained_model_calls", 0))
+                for record in records
+            ),
+            "action_parse_rate": (
+                total_parsed_actions / total_model_calls
+                if total_model_calls
+                else 0.0
+            ),
+            "valid_finish_count": sum(
+                record["finish_validation_passed"] is True
+                for record in records
+            ),
             "simulator_live_calls": sum(
                 record["simulator_live_calls"] for record in records
             ),

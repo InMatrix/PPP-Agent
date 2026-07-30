@@ -1,7 +1,8 @@
 # Small-scale PPP reinforcement-learning phase plan
 
-Last updated: 2026-07-30, after the trajectory-level investigation of
-compatibility Attempt 14 and the decision to restore local-model/action parity.
+Last updated: 2026-07-30, after the offline action-contract gate restored
+finish-correction parity, sanitized parse observability, and schema-constrained
+vLLM sampling.
 
 This is the durable execution plan for the teaching-scale PPP-RL phase. It
 tracks what has actually been proved, what remains uncertain, and the exact
@@ -57,7 +58,8 @@ It is a teaching-scale reproduction, not a performance reproduction.
 - Latest live-tested commit: `bcf5e5d`
   (`Add guarded step-two continuation gate`).
 - Latest offline-verified change: detached run management and pre-checkpoint
-  scalar durability at commit `213d64d`; 110 simplified tests pass.
+  scalar durability at commit `213d64d`, followed by the action-contract gate;
+  122 simplified tests pass.
 - Retrospective baseline commit: `e01a29a`
   (`Document GH200 compatibility attempts`).
 - Active Lambda instance: none; the user terminated the GH200 after Attempt 14.
@@ -127,6 +129,16 @@ complete record afterward. Offline tests exercise successful and failed
 detached workers, caller exit, reconnectable status/logs, unsafe and duplicate
 run IDs, key non-persistence, cleanup evidence, and log/checkpoint ordering.
 
+The offline action-contract gate now passes one shared JSON Schema from the
+navigation-v2 loop through `CallLLM` and Ray into vLLM
+`StructuredOutputsParams`. A rejected finish narrows the next and only
+correction call to `finish`. Sanitized traces record direct invalid-action
+categories and parse rates without model prose. The vLLM boundary also rejects
+sampled-token/log-probability length mismatches or missing chosen-token
+log-probabilities. These results use fake model outputs and constructor-level
+compatibility checks; a real Qwen3.5 generation has not yet proved engine-level
+schema enforcement.
+
 ## Gate status
 
 | Gate | Acceptance evidence | Status | Evidence |
@@ -144,34 +156,31 @@ run IDs, key non-persistence, cleanup evidence, and log/checkpoint ordering.
 | Ordinary step-2 continuation | Exactly eight new trajectories, finite loss/KL, nonzero gradient, changed adapter | Failed: finite KL but flat reward, zero gradient, and identical adapter | [Attempt 14](run-reports/attempt-14.md) |
 | Detached run lifecycle | SSH-independent worker with durable PID, status, exit, log, and cleanup evidence | Passed offline; live observation pending | Detached-controller tests and Lambda runbook |
 | Pre-checkpoint scalar durability | Loss, gradient, and KL survive interruption after checkpoint save | Passed offline; live observation pending | File-logger and ordering tests |
-| Sanitized invalid-action observability | Record parse-error categories without exporting model prose | Not implemented | Attempt 14 trajectory review |
-| Finish-correction parity | Verl permits exactly one finish-only correction call | Failed in Attempt 14; fix pending | Attempt 14 trajectory review |
-| Schema-constrained rollout | vLLM enforces the action schema and preserves chosen-token log probabilities | Not implemented | Local provider proves desired contract |
+| Sanitized invalid-action observability | Record parse-error categories without exporting model prose | Passed offline; live evidence pending | Focused loop and export tests |
+| Finish-correction parity | Verl permits exactly one finish-only correction call | Passed offline; live evidence pending | Scripted invalid/valid and disallowed-correction traces |
+| Schema-constrained rollout | vLLM enforces the action schema and preserves chosen-token log probabilities | Transport, constructor, and alignment checks pass offline; real generation pending | Shared-schema and vLLM compatibility tests |
 | Qwen3.5 training compatibility | BF16 LoRA actor/rollout completes one effective update and resume in a separate environment | Not started | Qwen3 remains fallback |
 | Short training | 20 genuine optimizer updates within phase budget | Not started | Pending |
 | Pre/post evaluation | All episodes scorable across seeds 11, 22, and 33 | Not started | Pending |
 
 ## Exact next gate
 
-Do not launch the 20-step run yet:
+Do not launch the 20-step run yet. The next gate is:
 
-1. Enforce one finish-only correction in the Verl loop, matching the ordinary
-   runner.
-2. Preserve sanitized invalid-action categories and per-group action-parse
-   rates without storing raw model prose.
-3. Add version-aware vLLM schema-constrained generation and verify that sampled
-   token IDs and chosen-token log probabilities remain aligned.
-4. Test those contracts locally and synthetically; keep navigation-v2 and the
-   repository tools unchanged.
-5. Keep Lambda terminated until the user is ready for a bounded paid gate.
-6. On a fresh instance, bootstrap a separate Transformers 5/vLLM Qwen3.5
+1. Push the offline action-contract implementation and keep Lambda terminated
+   until the user is ready for bounded paid work.
+2. On a fresh instance, bootstrap a separate Transformers 5/vLLM Qwen3.5
    environment, run focused offline tests, and verify the Gemini key without
    printing it.
-7. Pause for explicit confirmation, then run Qwen3.5 gates in order: model
-   load, one constrained action, deterministic eight-rollout group, old-policy
-   log probabilities, one optimizer step, LoRA save/reload, and one live Gemini
-   group.
-8. Use Qwen3-4B only if Qwen3.5 still requires invasive Verl changes after the
+3. Run the host doctor and its finish-only `StructuredOutputsParams` plus
+   log-probability constructor check.
+4. Pause for explicit confirmation, then run Qwen3.5 gates in order: model
+   load, one real constrained action, deterministic eight-rollout group,
+   old-policy log probabilities, one optimizer step, LoRA save/reload, and one
+   live Gemini group.
+5. After each run, inspect every trajectory and update the next numbered report
+   before selecting an intervention.
+6. Use Qwen3-4B only if Qwen3.5 still requires invasive Verl changes after the
    bounded gate, and record that evidence before falling back.
 
 ## Subsequent sequence

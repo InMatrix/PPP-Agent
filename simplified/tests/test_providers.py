@@ -1,6 +1,11 @@
 import httpx
 
-from ppp_simplified.providers import OpenAICompatibleAgent, parse_json_object
+from ppp_simplified.providers import (
+    OpenAICompatibleAgent,
+    action_json_schema,
+    action_response_format,
+    parse_json_object,
+)
 
 
 def test_parse_qwen_thinking_then_json() -> None:
@@ -16,6 +21,20 @@ def test_parse_fenced_json() -> None:
         '```json\n{"tool":"finish","arguments":{"functions":[]}}\n```'
     )
     assert payload["tool"] == "finish"
+
+
+def test_action_schema_is_shared_by_local_and_training_providers() -> None:
+    schema = action_json_schema(("find_symbol", "finish"))
+
+    assert schema["properties"]["tool"]["enum"] == ["find_symbol", "finish"]
+    assert schema["required"] == ["tool", "arguments", "reasoning"]
+    assert schema["additionalProperties"] is False
+    assert (
+        action_response_format(("find_symbol", "finish"))["json_schema"][
+            "schema"
+        ]
+        == schema
+    )
 
 
 def test_openai_compatible_qwen_adapter() -> None:

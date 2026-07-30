@@ -66,25 +66,34 @@ TOOL_NAMES_V2 = (
 )
 
 
+def action_json_schema(allowed_tools: Sequence[str]) -> dict[str, Any]:
+    """Return the shared LM Studio/vLLM action schema."""
+
+    selected_tools = tuple(allowed_tools)
+    if not selected_tools:
+        raise ValueError("At least one action tool must be allowed.")
+    return {
+        "type": "object",
+        "properties": {
+            "tool": {
+                "type": "string",
+                "enum": list(selected_tools),
+            },
+            "arguments": {"type": "object"},
+            "reasoning": {"type": "string"},
+        },
+        "required": ["tool", "arguments", "reasoning"],
+        "additionalProperties": False,
+    }
+
+
 def action_response_format(allowed_tools: Sequence[str]) -> dict[str, Any]:
     return {
         "type": "json_schema",
         "json_schema": {
             "name": "ppp_agent_action",
             "strict": True,
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "tool": {
-                        "type": "string",
-                        "enum": list(allowed_tools),
-                    },
-                    "arguments": {"type": "object"},
-                    "reasoning": {"type": "string"},
-                },
-                "required": ["tool", "arguments", "reasoning"],
-                "additionalProperties": False,
-            },
+            "schema": action_json_schema(allowed_tools),
         },
     }
 

@@ -241,6 +241,9 @@ print(f"torch.cuda={torch.version.cuda}; device={torch.cuda.get_device_name(0)}"
 # drifts before paid GPU initialization.
 from vllm.v1.engine.async_llm import AsyncLLM
 from vllm.entrypoints.openai.api_server import init_app_state
+from vllm import SamplingParams
+from vllm.sampling_params import StructuredOutputsParams
+from ppp_simplified.providers import action_json_schema
 from verl.workers.rollout.vllm_rollout.vllm_async_server import vLLMReplica
 
 async_llm_parameters = inspect.signature(AsyncLLM.from_vllm_config).parameters
@@ -258,10 +261,22 @@ if not app_state_supported:
         "FAIL: init_app_state has an unsupported signature: "
         f"{inspect.signature(init_app_state)}"
     )
+finish_schema = action_json_schema(("finish",))
+structured = StructuredOutputsParams(json=finish_schema)
+sampling = SamplingParams(
+    max_tokens=8,
+    logprobs=0,
+    structured_outputs=structured,
+)
+if sampling.structured_outputs.json != finish_schema:
+    raise SystemExit(
+        "FAIL: vLLM did not retain the finish-only structured-output schema."
+    )
 print(
     "verl.async_rollout=imported; "
     "AsyncLLM.enable_log_requests=supported; "
-    f"init_app_state.args={len(app_state_parameters)}"
+    f"init_app_state.args={len(app_state_parameters)}; "
+    "structured_outputs.json=supported; logprobs=enabled"
 )
 PY
 

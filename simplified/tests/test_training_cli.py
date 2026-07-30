@@ -191,8 +191,16 @@ def test_summarize_run_calculates_group_advantages(tmp_path: Path):
                     "sanitized_trajectory": [],
                     "termination": "natural_finish",
                     "model_calls": 2,
+                    "parsed_actions": 1 if index == 0 else 2,
+                    "action_parse_rate": 0.5 if index == 0 else 1.0,
+                    "invalid_action_count": 1 if index == 0 else 0,
+                    "invalid_action_categories": (
+                        {"invalid_json": 1} if index == 0 else {}
+                    ),
+                    "schema_constrained_model_calls": 2,
                     "finish_validation_passed": True,
                     "finish_correction_attempted": False,
+                    "finish_correction_parse_failed": False,
                     "invalid_predictions": [],
                     "model_generated_tokens": 10,
                     "environment_tokens": 4,
@@ -214,6 +222,13 @@ def test_summarize_run_calculates_group_advantages(tmp_path: Path):
     assert sum(group["advantages"]) == pytest.approx(0.0)
     assert report["metrics"]["groups_with_nonzero_reward_variance"] == 1
     assert report["metrics"]["estimated_compute_usd"] == pytest.approx(1.09)
+    assert report["metrics"]["action_parse_rate"] == pytest.approx(15 / 16)
+    assert report["metrics"]["invalid_action_count"] == 1
+    assert report["metrics"]["invalid_action_categories"] == {
+        "invalid_json": 1
+    }
+    assert report["metrics"]["valid_finish_count"] == 8
+    assert report["metrics"]["schema_constrained_model_calls"] == 16
 
     # A crashed/resumed step may leave a partial or duplicate group. Never
     # count it as a completed FoldGRPO update.

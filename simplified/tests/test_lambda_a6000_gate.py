@@ -100,6 +100,10 @@ def test_lambda_doctor_checks_the_exact_async_rollout_contract():
     assert "inspect.signature(init_app_state).parameters" in source
     assert '"vllm_config" in app_state_parameters' in source
     assert "if not app_state_supported:" in source
+    assert "StructuredOutputsParams(json=finish_schema)" in source
+    assert "action_json_schema((\"finish\",))" in source
+    assert "structured_outputs=structured" in source
+    assert "logprobs=0" in source
     assert 'pathlib.Path(sysconfig.get_path("include")) / "Python.h"' in source
 
 
