@@ -247,7 +247,9 @@ from vllm.entrypoints.openai.api_server import init_app_state
 from vllm import SamplingParams
 from vllm.sampling_params import StructuredOutputsParams
 from ppp_simplified.providers import action_json_schema
+from verl.utils.vllm_compat import create_worker_wrapper
 from verl.workers.rollout.vllm_rollout.vllm_async_server import vLLMReplica
+from verl.workers.rollout.vllm_rollout.vllm_rollout import WorkerWrapperBase
 
 async_llm_parameters = inspect.signature(AsyncLLM.from_vllm_config).parameters
 if "enable_log_requests" not in async_llm_parameters:
@@ -270,6 +272,12 @@ if not app_state_supported:
         "FAIL: init_app_state has an unsupported signature: "
         f"{inspect.signature(init_app_state)}"
     )
+worker_wrapper = create_worker_wrapper(
+    WorkerWrapperBase,
+    vllm_config=object(),
+)
+if not isinstance(worker_wrapper, WorkerWrapperBase):
+    raise SystemExit("FAIL: vLLM worker-wrapper compatibility returned the wrong type.")
 finish_schema = action_json_schema(("finish",))
 structured = StructuredOutputsParams(json=finish_schema)
 sampling = SamplingParams(
@@ -285,6 +293,7 @@ print(
     "verl.async_rollout=imported; "
     "AsyncLLM.enable_log_requests=supported; "
     f"init_app_state.args={len(app_state_parameters)}; "
+    f"worker_wrapper.args={len(inspect.signature(WorkerWrapperBase).parameters)}; "
     "structured_outputs.json=supported; logprobs=enabled"
 )
 PY
