@@ -13,6 +13,7 @@ from ppp_simplified.training_cli import (
     _validate_artifact,
     build_parser,
     command_contract_gate,
+    command_schema_gate,
     command_summarize_run,
     command_check_extension,
     command_verify_continuation,
@@ -45,7 +46,7 @@ def artifact() -> dict:
 
 def test_parser_exposes_local_and_guarded_gpu_commands():
     parser = build_parser()
-    assert {"doctor", "prepare", "contract-gate", "smoke", "live-group", "export", "summarize-run", "check-extension", "verify-continuation", "train", "evaluate"} <= set(parser._subparsers._group_actions[0].choices)
+    assert {"doctor", "prepare", "contract-gate", "schema-gate", "smoke", "live-group", "export", "summarize-run", "check-extension", "verify-continuation", "train", "evaluate"} <= set(parser._subparsers._group_actions[0].choices)
     train = parser.parse_args(["train", "--steps", "1", "--simulator", "deterministic"])
     assert train.steps == 1
     assert train.execute is False
@@ -54,6 +55,11 @@ def test_parser_exposes_local_and_guarded_gpu_commands():
     live = parser.parse_args(["live-group"])
     assert live.inference_seeds == DEFAULT_LIVE_INFERENCE_SEEDS
     assert live.model == "qwen35"
+    schema = parser.parse_args(["schema-gate"])
+    assert schema.model == "qwen35"
+    assert schema.max_model_len == 2048
+    assert schema.max_tokens == 256
+    assert schema.execute is False
 
 
 def test_contract_gate_writes_sanitized_summary(monkeypatch, tmp_path: Path):
@@ -72,6 +78,72 @@ def test_contract_gate_writes_sanitized_summary(monkeypatch, tmp_path: Path):
         type("Args", (), {"output": output})()
     ) == 0
     assert json.loads(output.read_text()) == payload
+
+
+def test_schema_gate_routes_model_and_bounded_limits(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+):
+    calls = []
+    payload = {
+        "status": "passed",
+        "model_id": "Qwen/Qwen3.5-4B",
+        "cases": [],
+    }
+
+    def fake_gate(**kwargs):
+        calls.append(kwargs)
+        return payload
+
+    monkeypatch.setattr(
+        "ppp_simplified.vllm_schema_gate.run_vllm_schema_gate",
+        fake_gate,
+    )
+    monkeypatch.setenv(
+        "CONFIRM_PAID_TRAINING",
+        "I_UNDERSTAND_LAMBDA_IS_BILLING",
+    )
+    output = tmp_path / "schema.json"
+    assert command_schema_gate(
+        type(
+            "Args",
+            (),
+            {
+                "model": "qwen35",
+                "output": output,
+                "max_model_len": 2048,
+                "max_tokens": 256,
+                "gpu_memory_utilization": 0.2,
+                "execute": True,
+            },
+        )()
+    ) == 0
+    assert calls == [
+        {
+            "model_id": "Qwen/Qwen3.5-4B",
+            "output_path": output,
+            "max_model_len": 2048,
+            "max_tokens": 256,
+            "gpu_memory_utilization": 0.2,
+        }
+    ]
+    assert "schema gate artifact" in capsys.readouterr().out
+
+
+def test_schema_gate_defaults_to_nonexecuting_paid_run(capsys):
+    assert command_schema_gate(
+        type("Args", (), {"execute": False})()
+    ) == 0
+    assert "Dry run only" in capsys.readouterr().out
+
+
+def test_schema_gate_requires_explicit_paid_confirmation(monkeypatch):
+    monkeypatch.delenv("CONFIRM_PAID_TRAINING", raising=False)
+    with pytest.raises(ValueError, match="CONFIRM_PAID_TRAINING"):
+        command_schema_gate(
+            type("Args", (), {"execute": True})()
+        )
 
 
 def test_live_group_requires_eight_distinct_seeds_and_model_routes():

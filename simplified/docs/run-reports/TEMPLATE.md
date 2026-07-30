@@ -45,6 +45,9 @@ inspect all failures plus a representative stratified sample.
 - Evidence unavailable after sanitization or interruption:
 
 Do not select the next intervention from aggregate reward or loss alone.
+For a diagnostic gate with no agent trajectories, mark the trajectory fields
+not applicable and analyze every generated completion and validation stage
+instead.
 
 ## Failure and diagnosis
 

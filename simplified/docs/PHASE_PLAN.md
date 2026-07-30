@@ -1,8 +1,7 @@
 # Small-scale PPP reinforcement-learning phase plan
 
-Last updated: 2026-07-30, after the offline action-contract gate restored
-finish-correction parity, sanitized parse observability, and schema-constrained
-vLLM sampling.
+Last updated: 2026-07-30, after preparing the targeted real-vLLM schema gate
+that precedes the full Qwen3.5/Verl compatibility run.
 
 This is the durable execution plan for the teaching-scale PPP-RL phase. It
 tracks what has actually been proved, what remains uncertain, and the exact
@@ -59,7 +58,8 @@ It is a teaching-scale reproduction, not a performance reproduction.
   (`Add guarded step-two continuation gate`).
 - Latest offline-verified change: detached run management and pre-checkpoint
   scalar durability at commit `213d64d`, followed by action-contract gate
-  commit `83d9032`; 122 simplified tests pass.
+  commit `83d9032` and the targeted schema-gate implementation; 131 simplified
+  tests pass.
 - Retrospective baseline commit: `e01a29a`
   (`Document GH200 compatibility attempts`).
 - Active Lambda instance: none; the user terminated the GH200 after Attempt 14.
@@ -159,6 +159,7 @@ schema enforcement.
 | Sanitized invalid-action observability | Record parse-error categories without exporting model prose | Passed offline; live evidence pending | Focused loop and export tests |
 | Finish-correction parity | Verl permits exactly one finish-only correction call | Passed offline; live evidence pending | Scripted invalid/valid and disallowed-correction traces |
 | Schema-constrained rollout | vLLM enforces the action schema and preserves chosen-token log probabilities | Transport, constructor, and alignment checks pass offline; real generation pending | Shared-schema and vLLM compatibility tests |
+| Targeted real schema output | One Qwen3.5 load; navigation and finish-only completions are exact JSON with aligned finite logprobs | Command and sanitized artifact contract pass offline; real engine not run | `ppp-train schema-gate` |
 | Qwen3.5 training compatibility | BF16 LoRA actor/rollout completes one effective update and resume in a separate environment | Not started | Qwen3 remains fallback |
 | Short training | 20 genuine optimizer updates within phase budget | Not started | Pending |
 | Pre/post evaluation | All episodes scorable across seeds 11, 22, and 33 | Not started | Pending |
@@ -174,13 +175,17 @@ Do not launch the 20-step run yet. The next gate is:
    printing it.
 3. Run the host doctor and its finish-only `StructuredOutputsParams` plus
    log-probability constructor check.
-4. Pause for explicit confirmation, then run Qwen3.5 gates in order: model
-   load, one real constrained action, deterministic eight-rollout group,
-   old-policy log probabilities, one optimizer step, LoRA save/reload, and one
-   live Gemini group.
-5. After each run, inspect every trajectory and update the next numbered report
-   before selecting an intervention.
-6. Use Qwen3-4B only if Qwen3.5 still requires invasive Verl changes after the
+4. Pause for explicit confirmation, then run `ppp-train schema-gate --execute`.
+   It loads Qwen3.5 once and tests both the full navigation enum and the
+   finish-only enum without Verl, Gemini, or an optimizer.
+5. If and only if that passes, run the remaining Qwen3.5 gates in order:
+   deterministic eight-rollout group, old-policy log probabilities, one
+   optimizer step, LoRA save/reload, and one live Gemini group.
+6. After each run, inspect every trajectory and update the next numbered report
+   before selecting an intervention. For the two-completion schema gate, where
+   there are no trajectories, inspect both completions and their validation
+   stages.
+7. Use Qwen3-4B only if Qwen3.5 still requires invasive Verl changes after the
    bounded gate, and record that evidence before falling back.
 
 ## Subsequent sequence

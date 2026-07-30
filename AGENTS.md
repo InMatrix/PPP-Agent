@@ -48,3 +48,8 @@ masking or loss eligibility, and recurring failure categories. Compare
 successful and failed trajectories, distinguish counts derived directly from
 artifacts from inferred counts, and state evidence that cannot be recovered.
 Do not explain a run using aggregate reward or loss alone.
+
+For a targeted diagnostic run that produces model completions but no agent
+trajectories, apply the same rule at completion level: inspect every completion,
+validation stage, termination or failure reason, and available token/logprob
+evidence before choosing the next intervention.

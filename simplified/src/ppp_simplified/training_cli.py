@@ -152,6 +152,49 @@ def command_contract_gate(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_schema_gate(args: argparse.Namespace) -> int:
+    """Run two real vLLM schema-constrained completions without Verl."""
+
+    if not args.execute:
+        print(
+            "Dry run only. This command loads a real model. After explicit "
+            "paid-compute confirmation, set "
+            "CONFIRM_PAID_TRAINING=I_UNDERSTAND_LAMBDA_IS_BILLING and add "
+            "--execute."
+        )
+        return 0
+    if (
+        os.getenv("CONFIRM_PAID_TRAINING")
+        != "I_UNDERSTAND_LAMBDA_IS_BILLING"
+    ):
+        raise ValueError(
+            "Set CONFIRM_PAID_TRAINING=I_UNDERSTAND_LAMBDA_IS_BILLING "
+            "before executing the real vLLM schema gate."
+        )
+    from .vllm_schema_gate import run_vllm_schema_gate
+
+    payload = run_vllm_schema_gate(
+        model_id=_model_id(args.model),
+        output_path=args.output,
+        max_model_len=args.max_model_len,
+        max_tokens=args.max_tokens,
+        gpu_memory_utilization=args.gpu_memory_utilization,
+    )
+    print(f"schema gate artifact: {args.output}")
+    print(
+        json.dumps(
+            {
+                "status": payload["status"],
+                "model_id": payload["model_id"],
+                "cases": payload["cases"],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
 def _load_subset_for_group(
     args: argparse.Namespace,
     episode,
@@ -755,6 +798,37 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_OUTPUT_DIR / "contract-gate.json",
     )
     contract_gate.set_defaults(handler=command_contract_gate)
+
+    schema_gate = subparsers.add_parser(
+        "schema-gate",
+        help=(
+            "Run two real vLLM completions to verify JSON-schema enforcement "
+            "and chosen-token log probabilities."
+        ),
+    )
+    schema_gate.add_argument(
+        "--model",
+        choices=("qwen35", "qwen3"),
+        default="qwen35",
+    )
+    schema_gate.add_argument("--max-model-len", type=int, default=2048)
+    schema_gate.add_argument("--max-tokens", type=int, default=256)
+    schema_gate.add_argument(
+        "--gpu-memory-utilization",
+        type=float,
+        default=0.20,
+    )
+    schema_gate.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_OUTPUT_DIR / "vllm-schema-gate.json",
+    )
+    schema_gate.add_argument(
+        "--execute",
+        action="store_true",
+        help="Load the real model after setting the paid-compute confirmation.",
+    )
+    schema_gate.set_defaults(handler=command_schema_gate)
 
     def add_group_arguments(command: argparse.ArgumentParser) -> None:
         command.add_argument("--data", type=Path, default=DEFAULT_DATA)

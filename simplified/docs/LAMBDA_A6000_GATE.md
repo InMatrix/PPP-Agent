@@ -111,11 +111,38 @@ simplified/.venv-lambda-qwen35/bin/ppp-train train \
   --steps 1 --simulator deterministic --model qwen35
 ```
 
-Only after explicit paid-run confirmation, execute the one-step compatibility
-gate:
+Before Verl or an optimizer, run the targeted vLLM schema gate. The first
+command is a dry run and does not load the model:
+
+```bash
+simplified/.venv-lambda-qwen35/bin/ppp-train schema-gate --model qwen35
+```
+
+After explicit paid-run confirmation, execute exactly two real completions
+from one model load:
 
 ```bash
 export CONFIRM_PAID_TRAINING=I_UNDERSTAND_LAMBDA_IS_BILLING
+simplified/.venv-lambda-qwen35/bin/ppp-train schema-gate \
+  --model qwen35 \
+  --execute \
+  --output simplified/results/training/attempt-15-schema-gate.json
+```
+
+The first completion permits all navigation-v2 tools. The second permits only
+`finish`. The gate fails unless each output is exactly one JSON object with
+the required keys, the selected tool belongs to that call's enum, and every
+sampled token has a finite chosen-token log probability. Its artifact includes
+schema hashes, tool names, counts, latency, versions, Torch-reported peak
+allocation, and a sanitized failure stage. It never includes prompts, output
+text, reasoning, or arguments. It does not construct Verl, Gemini, a LoRA
+adapter, an optimizer, or an eight-rollout group.
+
+If this gate fails, preserve its artifact and logs, analyze both completions,
+write the next numbered run report, and stop before training. If it passes,
+the same explicit confirmation permits the one-step compatibility gate:
+
+```bash
 simplified/.venv-lambda-qwen35/bin/ppp-train train \
   --steps 1 --simulator deterministic --model qwen35 --execute
 ```
