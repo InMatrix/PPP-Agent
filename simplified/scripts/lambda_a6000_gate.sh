@@ -278,6 +278,16 @@ worker_wrapper = create_worker_wrapper(
 )
 if not isinstance(worker_wrapper, WorkerWrapperBase):
     raise SystemExit("FAIL: vLLM worker-wrapper compatibility returned the wrong type.")
+legacy_worker_dispatch = callable(
+    getattr(WorkerWrapperBase, "execute_method", None)
+)
+direct_worker_dispatch = all(
+    callable(getattr(WorkerWrapperBase, name, None))
+    for name in ("init_device", "execute_model")
+)
+if not (legacy_worker_dispatch or direct_worker_dispatch):
+    raise SystemExit("FAIL: vLLM worker wrapper has no supported dispatch API.")
+worker_dispatch_mode = "legacy" if legacy_worker_dispatch else "direct"
 finish_schema = action_json_schema(("finish",))
 structured = StructuredOutputsParams(json=finish_schema)
 sampling = SamplingParams(
@@ -294,6 +304,7 @@ print(
     "AsyncLLM.enable_log_requests=supported; "
     f"init_app_state.args={len(app_state_parameters)}; "
     f"worker_wrapper.args={len(inspect.signature(WorkerWrapperBase).parameters)}; "
+    f"worker_dispatch={worker_dispatch_mode}; "
     "structured_outputs.json=supported; logprobs=enabled"
 )
 PY

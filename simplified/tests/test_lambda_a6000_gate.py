@@ -103,6 +103,8 @@ def test_lambda_doctor_checks_the_exact_async_rollout_contract():
     assert "vllm_rollout import WorkerWrapperBase" in source
     assert "create_worker_wrapper(" in source
     assert "isinstance(worker_wrapper, WorkerWrapperBase)" in source
+    assert 'for name in ("init_device", "execute_model")' in source
+    assert 'worker_dispatch_mode = "legacy" if' in source
     assert 'if "enable_log_requests" not in async_llm_parameters:' in source
     assert "inspect.signature(init_app_state).parameters" in source
     assert '("engine_client", "vllm_config", "state", "args")' in source
