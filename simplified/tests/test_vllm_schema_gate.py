@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -111,9 +112,30 @@ def test_real_engine_gate_contract_is_sanitized_and_checks_both_schemas(
         for item in payload["cases"]
     )
     assert FakeLLM.initialization["language_model_only"] is True
+    assert FakeLLM.initialization["max_num_seqs"] == 1
+    assert payload["configuration"]["max_num_seqs"] == 1
     encoded = output.read_text()
     assert "test-only generated reasoning" not in encoded
     assert "pkg/example.py:Example.run" not in encoded
+
+
+def test_real_engine_gate_exposes_native_helpers_beside_python(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_runtime(monkeypatch)
+    FakeLLM.omit_logprobs = False
+    FakeLLM.wrap_json = False
+    monkeypatch.setenv("PATH", "/usr/bin")
+
+    run_vllm_schema_gate(
+        model_id="Qwen/Qwen3.5-4B",
+        output_path=tmp_path / "schema-gate.json",
+    )
+
+    assert os.environ["PATH"].split(os.pathsep)[0] == str(
+        Path(sys.executable).parent
+    )
 
 
 def test_real_engine_gate_writes_failure_stage_when_logprobs_are_missing(

@@ -168,10 +168,13 @@ PY
     # NVIDIA's 0.7.1 ARM64 wheel contains an SBSA tag internally even though
     # the CUDA index serves it as aarch64. pip check rejects that metadata.
     # Accept only this exact warning and only when the shared library exists.
-    known_cusparselt_warning="nvidia-cusparselt-cu12 0.7.1 is not supported on this platform"
+    known_cusparselt_cu12_warning="nvidia-cusparselt-cu12 0.7.1 is not supported on this platform"
+    known_cusparselt_cu13_warning="nvidia-cusparselt-cu13 0.8.0 is not supported on this platform"
     unexpected_check_output="$(
       printf '%s\n' "$pip_check_output" |
-        grep -Fvx "$known_cusparselt_warning" || true
+        grep -Fvx \
+          -e "$known_cusparselt_cu12_warning" \
+          -e "$known_cusparselt_cu13_warning" || true
     )"
     cusparselt_library="$(
       find "$venv_dir/lib" -path '*/nvidia/cusparselt/lib/libcusparseLt.so.0' -print -quit
@@ -253,8 +256,14 @@ if "enable_log_requests" not in async_llm_parameters:
         "the vendored rollout adapter and installed vLLM are incompatible."
     )
 app_state_parameters = inspect.signature(init_app_state).parameters
-app_state_supported = len(app_state_parameters) == 3 or (
-    len(app_state_parameters) == 4 and "vllm_config" in app_state_parameters
+app_state_names = tuple(app_state_parameters)
+app_state_supported = (
+    app_state_names == ("engine_client", "state", "args")
+    or app_state_names == ("engine_client", "vllm_config", "state", "args")
+    or (
+        app_state_names == ("engine_client", "state", "args", "supported_tasks")
+        and app_state_parameters["supported_tasks"].default is not inspect.Parameter.empty
+    )
 )
 if not app_state_supported:
     raise SystemExit(

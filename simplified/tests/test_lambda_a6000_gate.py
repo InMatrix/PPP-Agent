@@ -76,6 +76,10 @@ def test_gh200_gate_is_arm64_and_binary_wheel_only():
         "nvidia-cusparselt-cu12 0.7.1 is not supported on this platform"
         in source
     )
+    assert (
+        "nvidia-cusparselt-cu13 0.8.0 is not supported on this platform"
+        in source
+    )
     assert "libcusparseLt.so.0" in source
     assert source.index('command -v nvidia-smi') < source.index(
         'if [[ "$mode" == "bootstrap" ]]'
@@ -98,7 +102,9 @@ def test_lambda_doctor_checks_the_exact_async_rollout_contract():
     assert "vllm_async_server import vLLMReplica" in source
     assert 'if "enable_log_requests" not in async_llm_parameters:' in source
     assert "inspect.signature(init_app_state).parameters" in source
-    assert '"vllm_config" in app_state_parameters' in source
+    assert '("engine_client", "vllm_config", "state", "args")' in source
+    assert '"supported_tasks"' in source
+    assert 'default is not inspect.Parameter.empty' in source
     assert "if not app_state_supported:" in source
     assert "StructuredOutputsParams(json=finish_schema)" in source
     assert "action_json_schema((\"finish\",))" in source

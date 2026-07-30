@@ -196,6 +196,25 @@ def test_app_state_initializer_supports_vllm_012_signature():
     assert calls == [("engine", "state", "args")]
 
 
+def test_app_state_initializer_supports_optional_supported_tasks_signature():
+    calls = []
+
+    async def initializer(engine_client, state, args, supported_tasks=None):
+        calls.append((engine_client, state, args, supported_tasks))
+
+    asyncio.run(
+        initialize_app_state(
+            initializer,
+            "engine",
+            "config",
+            "state",
+            "args",
+        )
+    )
+
+    assert calls == [("engine", "state", "args", None)]
+
+
 def test_app_state_initializer_supports_newer_signature():
     calls = []
 

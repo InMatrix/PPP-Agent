@@ -6,6 +6,8 @@ import hashlib
 import importlib.metadata
 import json
 import math
+import os
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -38,6 +40,20 @@ def _schema_sha256(schema: dict[str, Any]) -> str:
 def _write_artifact(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
+def _ensure_python_bin_on_path() -> None:
+    """Expose native helper executables installed beside this Python."""
+
+    # Do not resolve the executable: venv Python is commonly a symlink to the
+    # system interpreter, while native helpers such as ninja live beside the
+    # symlink in the virtual environment's bin directory.
+    python_bin = str(Path(sys.executable).parent)
+    path_entries = os.environ.get("PATH", "").split(os.pathsep)
+    if python_bin not in path_entries:
+        os.environ["PATH"] = os.pathsep.join(
+            [python_bin, *filter(None, path_entries)]
+        )
 
 
 def _cases() -> tuple[dict[str, Any], ...]:
@@ -115,6 +131,7 @@ def run_vllm_schema_gate(
             "max_model_len": max_model_len,
             "max_tokens": max_tokens,
             "gpu_memory_utilization": gpu_memory_utilization,
+            "max_num_seqs": 1,
             "temperature": 0.2,
             "logprobs": 0,
         },
@@ -123,6 +140,7 @@ def run_vllm_schema_gate(
     }
 
     try:
+        _ensure_python_bin_on_path()
         import torch
         from vllm import LLM, SamplingParams
         from vllm.sampling_params import StructuredOutputsParams
@@ -150,6 +168,7 @@ def run_vllm_schema_gate(
             max_model_len=max_model_len,
             gpu_memory_utilization=gpu_memory_utilization,
             language_model_only=True,
+            max_num_seqs=1,
         )
         payload["model_load_seconds"] = time.monotonic() - load_started_at
 
