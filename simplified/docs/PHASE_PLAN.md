@@ -58,7 +58,7 @@ It is a teaching-scale reproduction, not a performance reproduction.
   (`Add guarded step-two continuation gate`).
 - Latest offline-verified change: detached run management and pre-checkpoint
   scalar durability at commit `213d64d`, followed by action-contract gate
-  commit `83d9032` and the targeted schema-gate implementation; 131 simplified
+  commit `83d9032` and targeted schema-gate commit `5479365`; 131 simplified
   tests pass.
 - Retrospective baseline commit: `e01a29a`
   (`Document GH200 compatibility attempts`).
