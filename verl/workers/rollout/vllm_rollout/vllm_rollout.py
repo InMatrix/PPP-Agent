@@ -57,6 +57,7 @@ from verl.third_party.vllm import VLLM_SLEEP_LEVEL, get_version
 from verl.utils.device import is_npu_available
 from verl.utils.distributed import initialize_global_process_group_ray
 from verl.utils.ray_utils import ray_noset_visible_devices
+from verl.utils.vllm_compat import create_worker_wrapper
 from verl.utils.vllm import TensorLoRARequest, VLLMHijack, is_version_ge
 from verl.utils.vllm.vllm_fp8_utils import apply_vllm_fp8_patches, is_fp8_model, load_quanted_weights
 from verl.workers.config import HFModelConfig, RolloutConfig
@@ -196,7 +197,10 @@ class vLLMAsyncRollout(BaseRollout):
                 apply_vllm_fp8_patches()
             else:
                 raise ValueError(f"Currently only support fp8 quantization, got: {self.config.quantization}")
-        self.inference_engine = WorkerWrapperBase(vllm_config=self.vllm_config)
+        self.inference_engine = create_worker_wrapper(
+            WorkerWrapperBase,
+            vllm_config=self.vllm_config,
+        )
         self.inference_engine.init_worker(all_kwargs)
 
     def _load_model(self, *args, **kwargs):

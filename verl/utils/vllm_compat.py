@@ -34,6 +34,19 @@ def pop_max_tokens(
     return min(available, int(requested))
 
 
+def create_worker_wrapper(
+    wrapper_type: type,
+    *,
+    vllm_config: Any,
+) -> Any:
+    """Construct vLLM's worker wrapper across eager- and lazy-init APIs."""
+
+    parameters = inspect.signature(wrapper_type).parameters
+    if "vllm_config" in parameters:
+        return wrapper_type(vllm_config=vllm_config)
+    return wrapper_type()
+
+
 async def initialize_app_state(
     initializer: Callable[..., Awaitable[None]],
     engine_client: Any,

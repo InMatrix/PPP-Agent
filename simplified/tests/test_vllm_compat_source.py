@@ -20,6 +20,7 @@ def _load_compat():
 compat = _load_compat()
 resolve_enable_log_requests = compat.resolve_enable_log_requests
 initialize_app_state = compat.initialize_app_state
+create_worker_wrapper = compat.create_worker_wrapper
 pop_max_tokens = compat.pop_max_tokens
 normalize_structured_outputs = compat.normalize_structured_outputs
 extract_chosen_token_logprobs = compat.extract_chosen_token_logprobs
@@ -31,6 +32,38 @@ def test_vllm_lora_model_import_supports_new_module_name():
     assert "from vllm.lora.models import LoRAModel" in source
     assert "from vllm.lora.lora_model import LoRAModel" in source
     assert "except ModuleNotFoundError:" in source
+
+
+def test_worker_wrapper_supports_eager_config_constructor():
+    class Wrapper:
+        def __init__(self, *, vllm_config):
+            self.vllm_config = vllm_config
+
+    wrapper = create_worker_wrapper(Wrapper, vllm_config="config")
+
+    assert wrapper.vllm_config == "config"
+
+
+def test_worker_wrapper_supports_lazy_init_constructor():
+    class Wrapper:
+        def __init__(self, rpc_rank=0, global_rank=None):
+            self.rpc_rank = rpc_rank
+            self.global_rank = global_rank
+
+    wrapper = create_worker_wrapper(Wrapper, vllm_config="config")
+
+    assert wrapper.rpc_rank == 0
+    assert wrapper.global_rank is None
+
+
+def test_async_rollout_constructs_worker_through_compatibility_helper():
+    source = (
+        ROOT / "verl/workers/rollout/vllm_rollout/vllm_rollout.py"
+    ).read_text()
+
+    assert "from verl.utils.vllm_compat import create_worker_wrapper" in source
+    assert "create_worker_wrapper(" in source
+    assert "WorkerWrapperBase(vllm_config=" not in source
 
 
 def test_vllm_utility_imports_support_version_012_modules():
