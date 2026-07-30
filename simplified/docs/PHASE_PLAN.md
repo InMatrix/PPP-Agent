@@ -58,8 +58,8 @@ It is a teaching-scale reproduction, not a performance reproduction.
 - Latest live-tested commit: `bcf5e5d`
   (`Add guarded step-two continuation gate`).
 - Latest offline-verified change: detached run management and pre-checkpoint
-  scalar durability at commit `213d64d`, followed by the action-contract gate;
-  122 simplified tests pass.
+  scalar durability at commit `213d64d`, followed by action-contract gate
+  commit `83d9032`; 122 simplified tests pass.
 - Retrospective baseline commit: `e01a29a`
   (`Document GH200 compatibility attempts`).
 - Active Lambda instance: none; the user terminated the GH200 after Attempt 14.
@@ -167,8 +167,8 @@ schema enforcement.
 
 Do not launch the 20-step run yet. The next gate is:
 
-1. Push the offline action-contract implementation and keep Lambda terminated
-   until the user is ready for bounded paid work.
+1. Use pushed commit `83d9032` and keep Lambda terminated until the user is
+   ready for bounded paid work.
 2. On a fresh instance, bootstrap a separate Transformers 5/vLLM Qwen3.5
    environment, run focused offline tests, and verify the Gemini key without
    printing it.
