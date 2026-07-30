@@ -21,6 +21,7 @@ compat = _load_compat()
 resolve_enable_log_requests = compat.resolve_enable_log_requests
 initialize_app_state = compat.initialize_app_state
 create_worker_wrapper = compat.create_worker_wrapper
+call_worker_method = compat.call_worker_method
 pop_max_tokens = compat.pop_max_tokens
 normalize_structured_outputs = compat.normalize_structured_outputs
 extract_chosen_token_logprobs = compat.extract_chosen_token_logprobs
@@ -61,9 +62,42 @@ def test_async_rollout_constructs_worker_through_compatibility_helper():
         ROOT / "verl/workers/rollout/vllm_rollout/vllm_rollout.py"
     ).read_text()
 
-    assert "from verl.utils.vllm_compat import create_worker_wrapper" in source
+    assert "from verl.utils.vllm_compat import" in source
+    assert "create_worker_wrapper" in source
     assert "create_worker_wrapper(" in source
     assert "WorkerWrapperBase(vllm_config=" not in source
+
+
+def test_worker_method_uses_legacy_dispatcher_when_available():
+    class Wrapper:
+        def execute_method(self, method, *args, **kwargs):
+            return method, args, kwargs
+
+    assert call_worker_method(Wrapper(), "init_device", 7, ready=True) == (
+        "init_device",
+        (7,),
+        {"ready": True},
+    )
+
+
+def test_worker_method_uses_current_direct_method():
+    class Wrapper:
+        def init_device(self, *, ready=False):
+            return f"ready={ready}"
+
+    assert (
+        call_worker_method(Wrapper(), "init_device", ready=True)
+        == "ready=True"
+    )
+
+
+def test_async_rollout_dispatches_worker_through_compatibility_helper():
+    source = (
+        ROOT / "verl/workers/rollout/vllm_rollout/vllm_rollout.py"
+    ).read_text()
+
+    assert "call_worker_method(" in source
+    assert "self.inference_engine.execute_method(" not in source
 
 
 def test_vllm_utility_imports_support_version_012_modules():

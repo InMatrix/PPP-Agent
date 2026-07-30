@@ -47,6 +47,21 @@ def create_worker_wrapper(
     return wrapper_type()
 
 
+def call_worker_method(
+    worker_wrapper: Any,
+    method: str,
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """Dispatch through legacy wrappers or vLLM's current direct methods."""
+
+    legacy_dispatch = getattr(type(worker_wrapper), "execute_method", None)
+    if callable(legacy_dispatch):
+        return legacy_dispatch(worker_wrapper, method, *args, **kwargs)
+    target = getattr(worker_wrapper, method)
+    return target(*args, **kwargs)
+
+
 async def initialize_app_state(
     initializer: Callable[..., Awaitable[None]],
     engine_client: Any,
