@@ -42,7 +42,7 @@ user-simulator quality or trained-agent performance.
 | [11](attempt-11.md) | Real backward, optimizer, and checkpoint save | Flat zero-reward group; no effective parameter update | Same evidence commit | Learning signal / observability |
 | [12](attempt-12.md) | Full checkpoint reload at completed total | Passed without rollouts, optimization, or report overwrite | `5d5ecec`, `883df51` | Resume semantics |
 | [13](attempt-13.md) | Eight live Qwen/Gemini trajectories | Composite reward varied, but productivity was zero throughout | Pending continuation gate | Reward interpretation |
-| [14](attempt-14.md) | Ordinary resumed step, backward, and step-2 checkpoint | Flat clipped reward; zero gradient and no adapter delta | Pending detached-run and metrics durability fix | Learning signal / run lifecycle |
+| [14](attempt-14.md) | Ordinary resumed step, backward, and step-2 checkpoint | Flat reward, 30/61 inferred invalid actions, no valid finish or adapter delta | `ac77e4e`, `213d64d`; action-contract parity pending | Learning signal / agent contract / lifecycle |
 
 Attempt 11 completed the first real optimizer call and wrote the first
 checkpoint. Because its eight rewards were all zero, it did not change the
@@ -73,6 +73,8 @@ Attempt 14 resumed the ordinary dataloader for one bounded group. Its
 [`tracked step-two result`](artifacts/attempt-14-step-two.json) records the
 flat optimized reward, zero gradient, identical adapter hashes, and the
 post-checkpoint SSH interruption without exporting hidden simulator content.
+The later trajectory review adds action-parse, navigation, finish-validation,
+and local-versus-training contract evidence.
 
 ## Development-process signals
 

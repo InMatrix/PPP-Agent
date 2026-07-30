@@ -1,7 +1,7 @@
 # Small-scale PPP reinforcement-learning phase plan
 
-Last updated: 2026-07-29, after the offline run-lifecycle and metrics-durability
-fixes following compatibility attempt 14.
+Last updated: 2026-07-30, after the trajectory-level investigation of
+compatibility Attempt 14 and the decision to restore local-model/action parity.
 
 This is the durable execution plan for the teaching-scale PPP-RL phase. It
 tracks what has actually been proved, what remains uncertain, and the exact
@@ -13,7 +13,9 @@ the Lambda operating procedure lives in
 
 Complete and analyze a genuine, low-cost PPP-Agent reproduction using:
 
-- `Qwen/Qwen3-4B`;
+- `Qwen/Qwen3.5-4B` as the primary compatibility target, matching the local
+  model family;
+- `Qwen/Qwen3-4B` as the preserved fallback and prior live baseline;
 - BF16 rank-16 LoRA with learning rate `1e-6`;
 - the frozen navigation-v2 read-only environment;
 - eight trajectories per prompt;
@@ -30,10 +32,20 @@ It is a teaching-scale reproduction, not a performance reproduction.
 ## Frozen decisions
 
 - Keep group size eight and maximum eight logical turns.
-- Keep navigation-v2 prompts, tools, duplicate policy, and finish validation
-  frozen during RL compatibility and training.
+- Keep navigation-v2 and the current read-only repository tools frozen while
+  restoring action-contract and model parity.
+- Treat finish-only correction parity and schema-constrained action generation
+  as correctness fixes, not prompt or repository-tool tuning.
+- Keep Qwen3.5 and Qwen3 in separate environments. The Qwen3.5 BF16 Hugging
+  Face checkpoint matches the local base-model family but is not numerically
+  identical to LM Studio's quantized MLX artifact.
+- Preserve navigation-v2 as the prompt baseline. Evaluate any
+  `navigation-v2.1` candidate only after mechanical parity and only across a
+  diverse development set, never this Bokeh group alone.
 - Do not expose arbitrary shell execution or code editing.
-- Use the deterministic simulator until the optimizer/checkpoint gate passes.
+- Use the deterministic simulator for the new Qwen3.5 mechanical gates until
+  its optimizer/checkpoint gate passes; add Gemini only at the subsequent live
+  group gate.
 - Keep `heldout-v1` sealed until the planned milestone evaluation.
 - Do not alter FoldGRPO semantics merely to fit a device.
 - Prefer the smallest compatible GPU, but treat GH200 results as architecture-
@@ -45,7 +57,7 @@ It is a teaching-scale reproduction, not a performance reproduction.
 - Latest live-tested commit: `bcf5e5d`
   (`Add guarded step-two continuation gate`).
 - Latest offline-verified change: detached run management and pre-checkpoint
-  scalar durability; 110 simplified tests pass.
+  scalar durability at commit `213d64d`; 110 simplified tests pass.
 - Retrospective baseline commit: `e01a29a`
   (`Document GH200 compatibility attempts`).
 - Active Lambda instance: none; the user terminated the GH200 after Attempt 14.
@@ -55,6 +67,11 @@ It is a teaching-scale reproduction, not a performance reproduction.
 - Optimizer calls completed: 2; effective nonzero policy updates: 0.
 - Checkpoints written: 2 (`global_step_1` and byte-identical
   `global_step_2` LoRA adapters).
+- Attempt 14 action contract: 61 model calls, 31 parsed actions, 30 inferred
+  invalid actions, two actionless turn-limit trajectories, and zero valid
+  finishes.
+- Local/training mismatch: local Qwen3.5 used strict JSON Schema at temperature
+  0.2; training Qwen3 used prompt-only JSON at temperature 1.0.
 - Held-out evaluation opened: no.
 
 Attempt 09 completed all eight real Qwen trajectories, overlong masking,
@@ -70,7 +87,8 @@ Attempt 11 then completed eight real Qwen trajectories and the full training
 mechanics. All eight rewards were zero, however, so the advantages, policy
 loss, gradient norm, and effective LoRA update were zero. The step-1
 checkpoint and LoRA adapter were saved. The adapter and sanitized evidence are
-durable locally; the full actor/optimizer state remains on the active GH200.
+durable locally; the terminated GH200's full actor/optimizer state is no longer
+available.
 
 Attempt 12 loaded that full state, restored global step 1, and exited because
 the requested total was already satisfied. It produced no trajectories,
@@ -90,6 +108,16 @@ and gradient norm were zero, so `global_step_2` contains a LoRA adapter
 byte-identical to step 1. A foreground SSH disconnect occurred after the
 checkpoint write and before scalar-file logging and repository verification;
 the complete scalar record was recovered from the Ray worker log.
+
+The later trajectory review found that only 31 of 61 model calls became parsed
+actions. Two trajectories executed no tool, only one used `list_tree`, all six
+finish attempts proposed nonexistent functions, and no correction changed the
+rejected target. The expected function was
+`src/bokeh/command/subcommands/info.py:Info.invoke`; predictions instead used
+invented `show_info`, `show_version`, and `info` symbols in unsupported paths.
+One trajectory called `ask_user` after finish validation failed, proving that
+the Verl loop did not enforce the ordinary runner's finish-only correction
+policy.
 
 The subsequent offline fix adds a `start`/`status`/`logs` controller whose
 worker is detached from SSH and whose immutable run directory records PID,
@@ -116,38 +144,53 @@ run IDs, key non-persistence, cleanup evidence, and log/checkpoint ordering.
 | Ordinary step-2 continuation | Exactly eight new trajectories, finite loss/KL, nonzero gradient, changed adapter | Failed: finite KL but flat reward, zero gradient, and identical adapter | [Attempt 14](run-reports/attempt-14.md) |
 | Detached run lifecycle | SSH-independent worker with durable PID, status, exit, log, and cleanup evidence | Passed offline; live observation pending | Detached-controller tests and Lambda runbook |
 | Pre-checkpoint scalar durability | Loss, gradient, and KL survive interruption after checkpoint save | Passed offline; live observation pending | File-logger and ordering tests |
+| Sanitized invalid-action observability | Record parse-error categories without exporting model prose | Not implemented | Attempt 14 trajectory review |
+| Finish-correction parity | Verl permits exactly one finish-only correction call | Failed in Attempt 14; fix pending | Attempt 14 trajectory review |
+| Schema-constrained rollout | vLLM enforces the action schema and preserves chosen-token log probabilities | Not implemented | Local provider proves desired contract |
+| Qwen3.5 training compatibility | BF16 LoRA actor/rollout completes one effective update and resume in a separate environment | Not started | Qwen3 remains fallback |
 | Short training | 20 genuine optimizer updates within phase budget | Not started | Pending |
 | Pre/post evaluation | All episodes scorable across seeds 11, 22, and 33 | Not started | Pending |
 
 ## Exact next gate
 
-Checkpoint save/reload, live simulation, bounded continuation, detached
-execution, and pre-checkpoint logging are now proved at their appropriate
-offline or live boundaries:
+Do not launch the 20-step run yet:
 
-1. Keep the Lambda instance terminated until the user is ready for paid work.
-2. On a fresh instance, run the focused offline lifecycle tests and verify the
-   instance-local Gemini key without printing it.
-3. Pause for explicit confirmation before starting paid compute.
-4. Start the 20-step job through the detached controller and deliberately
-   disconnect/reconnect once to verify live lifecycle behavior.
-5. Treat the 20-step run as the stochastic learning-signal gate. Do not tune or
-   hand-pick a group; measure the fraction of groups with nonzero final reward
-   variance and effective adapter deltas.
+1. Enforce one finish-only correction in the Verl loop, matching the ordinary
+   runner.
+2. Preserve sanitized invalid-action categories and per-group action-parse
+   rates without storing raw model prose.
+3. Add version-aware vLLM schema-constrained generation and verify that sampled
+   token IDs and chosen-token log probabilities remain aligned.
+4. Test those contracts locally and synthetically; keep navigation-v2 and the
+   repository tools unchanged.
+5. Keep Lambda terminated until the user is ready for a bounded paid gate.
+6. On a fresh instance, bootstrap a separate Transformers 5/vLLM Qwen3.5
+   environment, run focused offline tests, and verify the Gemini key without
+   printing it.
+7. Pause for explicit confirmation, then run Qwen3.5 gates in order: model
+   load, one constrained action, deterministic eight-rollout group, old-policy
+   log probabilities, one optimizer step, LoRA save/reload, and one live Gemini
+   group.
+8. Use Qwen3-4B only if Qwen3.5 still requires invasive Verl changes after the
+   bounded gate, and record that evidence before falling back.
 
 ## Subsequent sequence
 
-1. Run 20 RL steps, retaining flat groups and requiring at least one effective
-   adapter delta before claiming genuine learning.
-2. Verify checkpoint resume through a second detached lifecycle run.
-3. Extend to 40 only if loss and KL remain finite, at least 25% of groups have
+1. Run 20 RL steps with the compatible parity model, retaining flat groups and
+   requiring at least one effective adapter delta before claiming learning.
+2. Report action-parse rate, valid-finish rate, reward variance, and adapter
+   deltas per group.
+3. Verify checkpoint resume through a second detached lifecycle run.
+4. Extend to 40 only if loss and KL remain finite, at least 25% of groups have
    nonzero reward variance, resume works, and projected phase compute remains
    below $45.
-4. Evaluate the untrained and trained 4B adapters across inference seeds
+5. Evaluate the untrained and trained 4B adapters across inference seeds
    11, 22, and 33.
-5. Contrast results with the frozen 9B reference without presenting it as an
+6. Contrast results with the frozen 9B reference without presenting it as an
    equivalent control.
-6. Produce the learner notebook trace and final development retrospective.
+7. Evaluate a versioned navigation-v2.1 prompt only if mechanical parity leaves
+   a broad navigation deficit on diverse development tasks.
+8. Produce the learner notebook trace and final development retrospective.
 
 ## Budget and artifact ledger
 
