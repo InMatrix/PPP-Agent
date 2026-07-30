@@ -43,6 +43,7 @@ user-simulator quality or trained-agent performance.
 | [12](attempt-12.md) | Full checkpoint reload at completed total | Passed without rollouts, optimization, or report overwrite | `5d5ecec`, `883df51` | Resume semantics |
 | [13](attempt-13.md) | Eight live Qwen/Gemini trajectories | Composite reward varied, but productivity was zero throughout | Pending continuation gate | Reward interpretation |
 | [14](attempt-14.md) | Ordinary resumed step, backward, and step-2 checkpoint | Flat reward, 30/61 inferred invalid actions, no valid finish or adapter delta | `ac77e4e`, `213d64d`; action-contract parity pending | Learning signal / agent contract / lifecycle |
+| [15](attempt-15.md) | Two real Qwen3.5 schema-constrained completions | Passed after bounded native-helper, concurrency, and GH200 compatibility fixes | `cfce77a` | Engine startup / action contract |
 
 Attempt 11 completed the first real optimizer call and wrote the first
 checkpoint. Because its eight rewards were all zero, it did not change the
@@ -75,6 +76,12 @@ flat optimized reward, zero gradient, identical adapter hashes, and the
 post-checkpoint SSH interruption without exporting hidden simulator content.
 The later trajectory review adds action-parse, navigation, finish-validation,
 and local-versus-training contract evidence.
+
+Attempt 15 loaded the primary `Qwen/Qwen3.5-4B` target through vLLM 0.21 and
+proved both the full navigation and finish-only JSON Schemas with aligned
+finite chosen-token log probabilities. Its
+[`tracked schema-gate result`](artifacts/attempt-15-schema-gate.json) contains
+completion-level validation evidence without raw model output.
 
 ## Development-process signals
 

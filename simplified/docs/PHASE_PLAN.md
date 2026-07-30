@@ -1,7 +1,7 @@
 # Small-scale PPP reinforcement-learning phase plan
 
-Last updated: 2026-07-30, after preparing the targeted real-vLLM schema gate
-that precedes the full Qwen3.5/Verl compatibility run.
+Last updated: 2026-07-30, after Attempt 15 passed the targeted real-vLLM
+Qwen3.5 schema gate on a Lambda GH200.
 
 This is the durable execution plan for the teaching-scale PPP-RL phase. It
 tracks what has actually been proved, what remains uncertain, and the exact
@@ -54,15 +54,12 @@ It is a teaching-scale reproduction, not a performance reproduction.
 ## Current state
 
 - Current branch: `codex/ppp-rl-4b`.
-- Latest live-tested commit: `bcf5e5d`
-  (`Add guarded step-two continuation gate`).
-- Latest offline-verified change: detached run management and pre-checkpoint
-  scalar durability at commit `213d64d`, followed by action-contract gate
-  commit `83d9032` and targeted schema-gate commit `5479365`; 131 simplified
-  tests pass.
+- Latest live-tested fix commit: `cfce77a`
+  (`Fix Qwen3.5 GH200 schema gate startup`).
+- Latest offline verification: 133 simplified tests pass.
 - Retrospective baseline commit: `e01a29a`
   (`Document GH200 compatibility attempts`).
-- Active Lambda instance: none; the user terminated the GH200 after Attempt 14.
+- Active Lambda instance: one GH200 retained by the user after Attempt 15.
 - Live simulator used in compatibility attempts: yes; Attempt 13 used five
   live Gemini calls for eleven questions, and Attempt 14 used four live calls
   for four questions.
@@ -72,8 +69,10 @@ It is a teaching-scale reproduction, not a performance reproduction.
 - Attempt 14 action contract: 61 model calls, 31 parsed actions, 30 inferred
   invalid actions, two actionless turn-limit trajectories, and zero valid
   finishes.
-- Local/training mismatch: local Qwen3.5 used strict JSON Schema at temperature
-  0.2; training Qwen3 used prompt-only JSON at temperature 1.0.
+- Qwen3.5 schema parity: a real BF16 vLLM 0.21 navigation completion and
+  finish-only completion both passed strict JSON Schema and chosen-token
+  log-probability validation at temperature 0.2. The full Qwen3.5 Verl loop
+  and training path remain untested.
 - Held-out evaluation opened: no.
 
 Attempt 09 completed all eight real Qwen trajectories, overlong masking,
@@ -129,15 +128,16 @@ complete record afterward. Offline tests exercise successful and failed
 detached workers, caller exit, reconnectable status/logs, unsafe and duplicate
 run IDs, key non-persistence, cleanup evidence, and log/checkpoint ordering.
 
-The offline action-contract gate now passes one shared JSON Schema from the
+The offline action-contract gate passes one shared JSON Schema from the
 navigation-v2 loop through `CallLLM` and Ray into vLLM
 `StructuredOutputsParams`. A rejected finish narrows the next and only
 correction call to `finish`. Sanitized traces record direct invalid-action
 categories and parse rates without model prose. The vLLM boundary also rejects
 sampled-token/log-probability length mismatches or missing chosen-token
-log-probabilities. These results use fake model outputs and constructor-level
-compatibility checks; a real Qwen3.5 generation has not yet proved engine-level
-schema enforcement.
+log-probabilities. Attempt 15 then proved the same full-navigation and
+finish-only schemas with two real Qwen3.5 completions. It did not execute
+actions, validate the finish against a repository AST, construct an
+eight-rollout group, or enter Verl.
 
 ## Gate status
 
@@ -159,7 +159,7 @@ schema enforcement.
 | Sanitized invalid-action observability | Record parse-error categories without exporting model prose | Passed offline; live evidence pending | Focused loop and export tests |
 | Finish-correction parity | Verl permits exactly one finish-only correction call | Passed offline; live evidence pending | Scripted invalid/valid and disallowed-correction traces |
 | Schema-constrained rollout | vLLM enforces the action schema and preserves chosen-token log probabilities | Transport, constructor, and alignment checks pass offline; real generation pending | Shared-schema and vLLM compatibility tests |
-| Targeted real schema output | One Qwen3.5 load; navigation and finish-only completions are exact JSON with aligned finite logprobs | Command and sanitized artifact contract pass offline; real engine not run | `ppp-train schema-gate` |
+| Targeted real schema output | One Qwen3.5 load; navigation and finish-only completions are exact JSON with aligned finite logprobs | Passed on GH200 | [Attempt 15](run-reports/attempt-15.md) |
 | Qwen3.5 training compatibility | BF16 LoRA actor/rollout completes one effective update and resume in a separate environment | Not started | Qwen3 remains fallback |
 | Short training | 20 genuine optimizer updates within phase budget | Not started | Pending |
 | Pre/post evaluation | All episodes scorable across seeds 11, 22, and 33 | Not started | Pending |
@@ -168,25 +168,22 @@ schema enforcement.
 
 Do not launch the 20-step run yet. The next gate is:
 
-1. Use pushed commit `83d9032` and keep Lambda terminated until the user is
-   ready for bounded paid work.
-2. On a fresh instance, bootstrap a separate Transformers 5/vLLM Qwen3.5
-   environment, run focused offline tests, and verify the Gemini key without
-   printing it.
-3. Run the host doctor and its finish-only `StructuredOutputsParams` plus
-   log-probability constructor check.
-4. Pause for explicit confirmation, then run `ppp-train schema-gate --execute`.
-   It loads Qwen3.5 once and tests both the full navigation enum and the
-   finish-only enum without Verl, Gemini, or an optimizer.
-5. If and only if that passes, run the remaining Qwen3.5 gates in order:
-   deterministic eight-rollout group, old-policy log probabilities, one
-   optimizer step, LoRA save/reload, and one live Gemini group.
-6. After each run, inspect every trajectory and update the next numbered report
-   before selecting an intervention. For the two-completion schema gate, where
-   there are no trajectories, inspect both completions and their validation
-   stages.
-7. Use Qwen3-4B only if Qwen3.5 still requires invasive Verl changes after the
-   bounded gate, and record that evidence before falling back.
+1. Push and use fix commit `cfce77a`; retain the separate Qwen3.5 environment
+   and the proven Qwen3 fallback environment.
+2. Run the guarded one-step deterministic Qwen3.5 gate. It must produce exactly
+   eight schema-constrained trajectories, preserve model-only masks and
+   chosen-token log probabilities, calculate FoldGRPO advantages, complete one
+   DAPO backward/optimizer call, and save a LoRA checkpoint.
+3. Require finite loss and KL, inspect all eight trajectories, and distinguish
+   an optimizer call from an effective nonzero adapter update. Record
+   child-process peak GPU memory; Attempt 15 proved the parent Torch counter is
+   not sufficient for colocated vLLM.
+4. If the one-step gate passes, rerun the guarded command to prove LoRA and
+   trainer-state reload/resume.
+5. Then run one eight-trajectory live Gemini group without an optimizer and
+   perform full trajectory-level analysis.
+6. Use Qwen3-4B only if Qwen3.5 requires an invasive Verl or algorithm change,
+   and record that evidence before falling back.
 
 ## Subsequent sequence
 
@@ -215,6 +212,11 @@ The terminated GH200 incurred `$1.4428` of measured compatibility work before ta
 `$0.6775` for Attempt 11, `$0.0337` for Attempt 12, `$0.1457` for Attempt 13,
 and `$0.5859` for Attempt 14. One-time bootstrap and idle-instance time are not
 included because their exact start/end timestamps were not preserved.
+
+Attempt 15 used a new GH200. Its four targeted executions consumed about 329
+active command seconds, approximately `$0.21` before tax at `$2.29/hour`; the
+full observed diagnosis interval was about `$0.36`. Bootstrap, idle-instance
+time, and the still-running instance are not included.
 
 For every future paid run, record before termination:
 

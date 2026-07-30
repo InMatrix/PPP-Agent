@@ -1,0 +1,66 @@
+{
+  "cases": [
+    {
+      "action_valid": true,
+      "allowed_tools": [
+        "list_tree",
+        "find_symbol",
+        "search_code",
+        "read_file",
+        "ask_user",
+        "finish"
+      ],
+      "argument_count": 1,
+      "chosen_token_logprobs": 63,
+      "exact_json": true,
+      "finite_chosen_token_logprobs": true,
+      "latency_seconds": 4.7299840149999,
+      "logprobs_returned": true,
+      "name": "navigation",
+      "sampled_tokens": 63,
+      "schema_sha256": "d07a5d0de6626261127abdd01f22ac1efc3cdbeaeb26bfda2a32212508ca174b",
+      "selected_tool": "ask_user"
+    },
+    {
+      "action_valid": true,
+      "allowed_tools": [
+        "finish"
+      ],
+      "argument_count": 1,
+      "chosen_token_logprobs": 83,
+      "exact_json": true,
+      "finite_chosen_token_logprobs": true,
+      "latency_seconds": 1.161026297000035,
+      "logprobs_returned": true,
+      "name": "finish_only",
+      "sampled_tokens": 83,
+      "schema_sha256": "8af50999efcc08277bbc79bc145fc9b5c7b129c724cd44e9e4829bba141794cb",
+      "selected_tool": "finish"
+    }
+  ],
+  "configuration": {
+    "dtype": "bfloat16",
+    "gpu_memory_utilization": 0.2,
+    "language_model_only": true,
+    "logprobs": 0,
+    "max_model_len": 2048,
+    "max_num_seqs": 1,
+    "max_tokens": 256,
+    "temperature": 0.2
+  },
+  "model_id": "Qwen/Qwen3.5-4B",
+  "model_load_seconds": 18.504566550999925,
+  "raw_output_exported": false,
+  "runtime": {
+    "cuda": "13.0",
+    "gpu": "NVIDIA GH200 480GB",
+    "torch": "2.11.0+cu130",
+    "transformers": "5.14.1",
+    "vllm": "0.21.0"
+  },
+  "schema_version": 1,
+  "stage": "vllm_constraint_schema",
+  "status": "passed",
+  "torch_peak_allocated_bytes": 0,
+  "total_seconds": 29.567843025000002
+}

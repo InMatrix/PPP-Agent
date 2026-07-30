@@ -72,11 +72,12 @@ This gate uses `vllm==0.21.0` and Transformers 5.x with
 `Qwen/Qwen3.5-4B`. It intentionally does not reuse the vLLM 0.12/Transformers
 4 environment that established the Qwen3 fallback.
 
-NVIDIA's `nvidia-cusparselt-cu12==0.7.1` ARM64 wheel contains an internal SBSA
-tag even though its download is labeled AArch64. `pip check` reports that
-single package as unsupported. The bootstrap accepts only that exact warning,
-only on GH200, and only after finding the installed `libcusparseLt.so.0`.
-Every other dependency warning remains fatal.
+NVIDIA's `nvidia-cusparselt-cu12==0.7.1` and
+`nvidia-cusparselt-cu13==0.8.0` ARM64 wheels can carry platform metadata that
+`pip check` reports as unsupported even though the required AArch64 shared
+library is installed. The bootstrap accepts only those exact warnings, only on
+GH200, and only after finding `libcusparseLt.so.0`. Every other dependency
+warning remains fatal.
 
 A failed gate is a compatibility result—not permission to patch the algorithm
 or reduce the rollout group.
