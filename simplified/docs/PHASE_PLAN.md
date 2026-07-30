@@ -1,7 +1,7 @@
 # Small-scale PPP reinforcement-learning phase plan
 
-Last updated: 2026-07-30, after Attempt 15 passed the targeted real-vLLM
-Qwen3.5 schema gate on a Lambda GH200.
+Last updated: 2026-07-30, after Attempt 16 exposed and bounded the vLLM 0.21
+worker-wrapper constructor change in the full Qwen3.5/Verl path.
 
 This is the durable execution plan for the teaching-scale PPP-RL phase. It
 tracks what has actually been proved, what remains uncertain, and the exact
@@ -54,9 +54,11 @@ It is a teaching-scale reproduction, not a performance reproduction.
 ## Current state
 
 - Current branch: `codex/ppp-rl-4b`.
-- Latest live-tested fix commit: `cfce77a`
-  (`Fix Qwen3.5 GH200 schema gate startup`).
-- Latest offline verification: 133 simplified tests pass.
+- Latest live-tested commit: `4704447`
+  (`Record Qwen3.5 schema gate run`).
+- Latest offline fix commits: `771fbb0`
+  (`Adapt Verl worker wrapper to vLLM 0.21`) and `b2c0140`
+  (`Check vLLM worker wrapper in Lambda doctor`); 136 simplified tests pass.
 - Retrospective baseline commit: `e01a29a`
   (`Document GH200 compatibility attempts`).
 - Active Lambda instance: one GH200 retained by the user after Attempt 15.
@@ -72,7 +74,8 @@ It is a teaching-scale reproduction, not a performance reproduction.
 - Qwen3.5 schema parity: a real BF16 vLLM 0.21 navigation completion and
   finish-only completion both passed strict JSON Schema and chosen-token
   log-probability validation at temperature 0.2. The full Qwen3.5 Verl loop
-  and training path remain untested.
+  now reaches the external engine worker, but no Qwen3.5 trajectory or
+  optimizer step has completed.
 - Held-out evaluation opened: no.
 
 Attempt 09 completed all eight real Qwen trajectories, overlong masking,
@@ -160,7 +163,7 @@ eight-rollout group, or enter Verl.
 | Finish-correction parity | Verl permits exactly one finish-only correction call | Passed offline; live evidence pending | Scripted invalid/valid and disallowed-correction traces |
 | Schema-constrained rollout | vLLM enforces the action schema and preserves chosen-token log probabilities | Transport, constructor, and alignment checks pass offline; real generation pending | Shared-schema and vLLM compatibility tests |
 | Targeted real schema output | One Qwen3.5 load; navigation and finish-only completions are exact JSON with aligned finite logprobs | Passed on GH200 | [Attempt 15](run-reports/attempt-15.md) |
-| Qwen3.5 training compatibility | BF16 LoRA actor/rollout completes one effective update and resume in a separate environment | Not started | Qwen3 remains fallback |
+| Qwen3.5 training compatibility | BF16 LoRA actor/rollout completes one effective update and resume in a separate environment | Attempt 16 reached vLLM worker initialization; no trajectory started | [Attempt 16](run-reports/attempt-16.md) |
 | Short training | 20 genuine optimizer updates within phase budget | Not started | Pending |
 | Pre/post evaluation | All episodes scorable across seeds 11, 22, and 33 | Not started | Pending |
 
@@ -168,21 +171,25 @@ eight-rollout group, or enter Verl.
 
 Do not launch the 20-step run yet. The next gate is:
 
-1. Push and use fix commit `cfce77a`; retain the separate Qwen3.5 environment
+1. Push and use doctor commit `b2c0140`; retain the separate Qwen3.5 environment
    and the proven Qwen3 fallback environment.
-2. Run the guarded one-step deterministic Qwen3.5 gate. It must produce exactly
+2. Before paid execution, run the worker-wrapper compatibility tests against
+   the installed vLLM 0.21 class and extend the host doctor to cover this
+   constructor boundary.
+3. Retry the guarded one-step deterministic Qwen3.5 gate under a new immutable
+   run ID. It must produce exactly
    eight schema-constrained trajectories, preserve model-only masks and
    chosen-token log probabilities, calculate FoldGRPO advantages, complete one
    DAPO backward/optimizer call, and save a LoRA checkpoint.
-3. Require finite loss and KL, inspect all eight trajectories, and distinguish
+4. Require finite loss and KL, inspect all eight trajectories, and distinguish
    an optimizer call from an effective nonzero adapter update. Record
    child-process peak GPU memory; Attempt 15 proved the parent Torch counter is
    not sufficient for colocated vLLM.
-4. If the one-step gate passes, rerun the guarded command to prove LoRA and
+5. If the one-step gate passes, rerun the guarded command to prove LoRA and
    trainer-state reload/resume.
-5. Then run one eight-trajectory live Gemini group without an optimizer and
+6. Then run one eight-trajectory live Gemini group without an optimizer and
    perform full trajectory-level analysis.
-6. Use Qwen3-4B only if Qwen3.5 requires an invasive Verl or algorithm change,
+7. Use Qwen3-4B only if Qwen3.5 requires an invasive Verl or algorithm change,
    and record that evidence before falling back.
 
 ## Subsequent sequence
@@ -217,6 +224,9 @@ Attempt 15 used a new GH200. Its four targeted executions consumed about 329
 active command seconds, approximately `$0.21` before tax at `$2.29/hour`; the
 full observed diagnosis interval was about `$0.36`. Bootstrap, idle-instance
 time, and the still-running instance are not included.
+
+Attempt 16 consumed 56 seconds, approximately `$0.0356` before tax. It wrote no
+trajectory or checkpoint, and detached cleanup left zero GPU processes.
 
 For every future paid run, record before termination:
 

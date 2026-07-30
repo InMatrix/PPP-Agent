@@ -44,6 +44,7 @@ user-simulator quality or trained-agent performance.
 | [13](attempt-13.md) | Eight live Qwen/Gemini trajectories | Composite reward varied, but productivity was zero throughout | Pending continuation gate | Reward interpretation |
 | [14](attempt-14.md) | Ordinary resumed step, backward, and step-2 checkpoint | Flat reward, 30/61 inferred invalid actions, no valid finish or adapter delta | `ac77e4e`, `213d64d`; action-contract parity pending | Learning signal / agent contract / lifecycle |
 | [15](attempt-15.md) | Two real Qwen3.5 schema-constrained completions | Passed after bounded native-helper, concurrency, and GH200 compatibility fixes | `cfce77a` | Engine startup / action contract |
+| [16](attempt-16.md) | Qwen3.5/Verl vLLM engine worker initialization | `WorkerWrapperBase` rejected the legacy eager-config constructor | `771fbb0` | vLLM API adaptation |
 
 Attempt 11 completed the first real optimizer call and wrote the first
 checkpoint. Because its eight rewards were all zero, it did not change the
@@ -82,6 +83,12 @@ proved both the full navigation and finish-only JSON Schemas with aligned
 finite chosen-token log probabilities. Its
 [`tracked schema-gate result`](artifacts/attempt-15-schema-gate.json) contains
 completion-level validation evidence without raw model output.
+
+Attempt 16 entered the full Qwen3.5/Verl stack but failed before any trajectory
+because vLLM 0.21 moved worker configuration from the wrapper constructor to
+`init_worker`. Its
+[`tracked lifecycle result`](artifacts/attempt-16-worker-wrapper.json) records
+zero trajectories, successful Ray cleanup, and zero remaining GPU processes.
 
 ## Development-process signals
 
