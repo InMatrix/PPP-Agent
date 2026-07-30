@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "stage": "qwen35_one_step_compatibility",
+  "status": "failed",
+  "tested_commit": "eaf7136",
+  "hardware": "NVIDIA GH200 480GB",
+  "model_id": "Qwen/Qwen3.5-4B",
+  "simulator": "deterministic",
+  "group_size": 8,
+  "started_at_utc": "2026-07-30T05:21:19Z",
+  "finished_at_utc": "2026-07-30T05:22:14Z",
+  "elapsed_seconds": 55,
+  "estimated_compute_usd": 0.035,
+  "failure": {
+    "stage": "vllm_engine_worker_device_initialization",
+    "error_type": "AttributeError",
+    "interface": "Worker.execute_method"
+  },
+  "trajectories_written": 0,
+  "optimizer_steps": 0,
+  "checkpoints_written": 0,
+  "cleanup_status": "passed",
+  "gpu_processes_after_cleanup": 0,
+  "raw_model_output_exported": false
+}

@@ -1,7 +1,7 @@
 # Small-scale PPP reinforcement-learning phase plan
 
-Last updated: 2026-07-30, after Attempt 16 exposed and bounded the vLLM 0.21
-worker-wrapper constructor change in the full Qwen3.5/Verl path.
+Last updated: 2026-07-30, after Attempt 17 validated the constructor fix and
+exposed vLLM 0.21's direct worker-method dispatch in the Qwen3.5/Verl path.
 
 This is the durable execution plan for the teaching-scale PPP-RL phase. It
 tracks what has actually been proved, what remains uncertain, and the exact
@@ -54,11 +54,12 @@ It is a teaching-scale reproduction, not a performance reproduction.
 ## Current state
 
 - Current branch: `codex/ppp-rl-4b`.
-- Latest live-tested commit: `4704447`
-  (`Record Qwen3.5 schema gate run`).
-- Latest offline fix commits: `771fbb0`
-  (`Adapt Verl worker wrapper to vLLM 0.21`) and `b2c0140`
-  (`Check vLLM worker wrapper in Lambda doctor`); 136 simplified tests pass.
+- Latest live-tested commit: `eaf7136`
+  (`Record Qwen3.5 worker-wrapper failure`).
+- Latest offline fix commits: `bc1a1e9`
+  (`Adapt Verl worker dispatch to vLLM 0.21`) and `38347c6`
+  (`Check vLLM worker dispatch in Lambda doctor`); the focused pre-run suite
+  passes 29 tests.
 - Retrospective baseline commit: `e01a29a`
   (`Document GH200 compatibility attempts`).
 - Active Lambda instance: one GH200 retained by the user after Attempt 15.
@@ -163,7 +164,7 @@ eight-rollout group, or enter Verl.
 | Finish-correction parity | Verl permits exactly one finish-only correction call | Passed offline; live evidence pending | Scripted invalid/valid and disallowed-correction traces |
 | Schema-constrained rollout | vLLM enforces the action schema and preserves chosen-token log probabilities | Transport, constructor, and alignment checks pass offline; real generation pending | Shared-schema and vLLM compatibility tests |
 | Targeted real schema output | One Qwen3.5 load; navigation and finish-only completions are exact JSON with aligned finite logprobs | Passed on GH200 | [Attempt 15](run-reports/attempt-15.md) |
-| Qwen3.5 training compatibility | BF16 LoRA actor/rollout completes one effective update and resume in a separate environment | Attempt 16 reached vLLM worker initialization; no trajectory started | [Attempt 16](run-reports/attempt-16.md) |
+| Qwen3.5 training compatibility | BF16 LoRA actor/rollout completes one effective update and resume in a separate environment | Attempt 17 reached worker `init_device`; no trajectory started | [Attempt 17](run-reports/attempt-17.md) |
 | Short training | 20 genuine optimizer updates within phase budget | Not started | Pending |
 | Pre/post evaluation | All episodes scorable across seeds 11, 22, and 33 | Not started | Pending |
 
@@ -171,11 +172,11 @@ eight-rollout group, or enter Verl.
 
 Do not launch the 20-step run yet. The next gate is:
 
-1. Push and use doctor commit `b2c0140`; retain the separate Qwen3.5 environment
+1. Push and use doctor commit `38347c6`; retain the separate Qwen3.5 environment
    and the proven Qwen3 fallback environment.
-2. Before paid execution, run the worker-wrapper compatibility tests against
-   the installed vLLM 0.21 class and extend the host doctor to cover this
-   constructor boundary.
+2. Before paid execution, exercise the constructor and direct-dispatch helpers
+   against the installed vLLM 0.21 wrapper and run the focused compatibility
+   suite.
 3. Retry the guarded one-step deterministic Qwen3.5 gate under a new immutable
    run ID. It must produce exactly
    eight schema-constrained trajectories, preserve model-only masks and
@@ -227,6 +228,10 @@ time, and the still-running instance are not included.
 
 Attempt 16 consumed 56 seconds, approximately `$0.0356` before tax. It wrote no
 trajectory or checkpoint, and detached cleanup left zero GPU processes.
+
+Attempt 17 consumed 55 seconds, approximately `$0.035` before tax. It advanced
+through `init_worker`, wrote no trajectory or checkpoint, and again left zero
+GPU processes after cleanup.
 
 For every future paid run, record before termination:
 

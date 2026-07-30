@@ -45,6 +45,7 @@ user-simulator quality or trained-agent performance.
 | [14](attempt-14.md) | Ordinary resumed step, backward, and step-2 checkpoint | Flat reward, 30/61 inferred invalid actions, no valid finish or adapter delta | `ac77e4e`, `213d64d`; action-contract parity pending | Learning signal / agent contract / lifecycle |
 | [15](attempt-15.md) | Two real Qwen3.5 schema-constrained completions | Passed after bounded native-helper, concurrency, and GH200 compatibility fixes | `cfce77a` | Engine startup / action contract |
 | [16](attempt-16.md) | Qwen3.5/Verl vLLM engine worker initialization | `WorkerWrapperBase` rejected the legacy eager-config constructor | `771fbb0` | vLLM API adaptation |
+| [17](attempt-17.md) | Qwen3.5/Verl worker device initialization | Concrete vLLM 0.21 worker removed generic `execute_method` | `bc1a1e9` | vLLM API adaptation |
 
 Attempt 11 completed the first real optimizer call and wrote the first
 checkpoint. Because its eight rewards were all zero, it did not change the
@@ -89,6 +90,11 @@ because vLLM 0.21 moved worker configuration from the wrapper constructor to
 `init_worker`. Its
 [`tracked lifecycle result`](artifacts/attempt-16-worker-wrapper.json) records
 zero trajectories, successful Ray cleanup, and zero remaining GPU processes.
+
+Attempt 17 validated the lazy-constructor fix and reached `init_device`, where
+vLLM 0.21 required direct wrapper-method dispatch. Its
+[`tracked lifecycle result`](artifacts/attempt-17-worker-dispatch.json) again
+records zero trajectories and clean GPU shutdown.
 
 ## Development-process signals
 
